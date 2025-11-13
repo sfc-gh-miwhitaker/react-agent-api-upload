@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""
+Single-command key-pair authentication setup for Snowflake.
+
+This script:
+1. Generates RSA key pair (or uses existing)
+2. Outputs SQL to assign public key to Snowflake user
+3. Updates Node.js client code to support key-pair auth
+4. Updates .env file with new settings
+
+Usage:
+    python tools/01_setup_keypair_auth.py [--account ACCOUNT] [--user USERNAME]
+"""
+
+import argparse
+import os
+import sys
+from pathlib import Path
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.backends import default_backend
+import base64
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Setup Snowflake key-pair authentication")
+    parser.add_argument("--account", help="Snowflake account identifier (e.g., ORGNAME-ACCOUNTNAME)")
+    parser.add_argument("--user", default="SFE_REACT_AGENT_USER", help="Snowflake username")
+    parser.add_argument("--force", action="store_true", help="Regenerate keys even if they exist")
+    args = parser.parse_args()
+
+    # Change to project root
+    project_root = Path(__file__).parent.parent
+    os.chdir(project_root)
+
+    print("🔐 Snowflake Key-Pair Authentication Setup")
+    print("=" * 60)
+    print()
+
+    # Step 1: Generate or verify keys
+    key_dir = Path("config/keys")
+    key_dir.mkdir(parents=True, exist_ok=True)
+    
+    private_key_path = key_dir / "rsa_key.p8"
+    public_key_path = key_dir / "rsa_key.pub"
+
+    if private_key_path.exists() and not args.force:
+        print(f"✅ Using existing keys in {key_dir}/")
+        print()
+        with open(public_key_path, "rb") as f:
+            public_key_pem = f.read()
+    else:
+        print(f"🔑 Generating new RSA key pair in {key_dir}/")
+        
+        # Generate private key
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+            backend=default_backend()
+        )
+        
+        # Save private key (unencrypted for easier automation)
+        private_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        with open(private_key_path, "wb") as f:
+            f.write(private_pem)
+        os.chmod(private_key_path, 0o600)
+        
+        # Save public key
+        public_key = private_key.public_key()
+        public_key_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        with open(public_key_path, "wb") as f:
+            f.write(public_key_pem)
+        
+        print(f"   Private: {private_key_path}")
+        print(f"   Public:  {public_key_path}")
+        print()
+
+    # Step 2: Extract public key in Snowflake format
+    print("📤 Extracting public key for Snowflake...")
+    
+    # Read the public key and convert to DER format
+    with open(public_key_path, "rb") as f:
+        public_key_pem = f.read()
+    
+    public_key = serialization.load_pem_public_key(public_key_pem, backend=default_backend())
+    public_key_der = public_key.public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    
+    # Base64 encode without newlines
+    public_key_b64 = base64.b64encode(public_key_der).decode('utf-8')
+    print("   ✅ Public key extracted")
+    print()
+
+    # Step 3: Output SQL command
+    print("=" * 60)
+    print("📋 NEXT STEP: Run this SQL in Snowsight")
+    print("=" * 60)
+    print()
+    print("-- Use SECURITYADMIN or higher role")
+    print("USE ROLE SECURITYADMIN;")
+    print()
+    print(f"-- Assign public key to user")
+    print(f"ALTER USER {args.user}")
+    print(f"  SET RSA_PUBLIC_KEY = '{public_key_b64}';")
+    print()
+    print("-- Verify assignment")
+    print(f"DESC USER {args.user};")
+    print("-- Look for RSA_PUBLIC_KEY_FP (should show SHA256:...)")
+    print()
+    print("=" * 60)
+    print()
+
+    # Step 4: Update Node.js client
+    print("🔧 Updating Node.js client to support key-pair auth...")
+    update_nodejs_client()
+    print("   ✅ Updated server/src/snowflakeClient.js")
+    print()
+
+    # Step 5: Create .env file automatically
+    env_file = Path("config") / ".env"
+    env_example = Path("config") / ".env.example"
+    
+    print("📝 Creating .env file...")
+    
+    # Create config directory if it doesn't exist
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Determine account value
+    account_value = args.account if args.account else "YOUR_ACCOUNT_IDENTIFIER"
+    
+    # Create .env content
+    env_content = f"""# ==============================================================================
+# Snowflake Cortex Agent Chat Application - Environment Configuration
+# ==============================================================================
+# 
+# AUTO-GENERATED by tools/01_setup_keypair_auth.sh
+# Date: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+#
+# This file contains your Snowflake credentials.
+# NEVER commit this file to version control!
+#
+# ==============================================================================
+
+# ==============================================================================
+# Key-Pair Authentication (Configured)
+# ==============================================================================
+
+SNOWFLAKE_AUTH_TYPE=keypair
+SNOWFLAKE_USER={args.user}
+SNOWFLAKE_PRIVATE_KEY_PATH={project_root / private_key_path}
+
+# ==============================================================================
+# Snowflake Account Configuration
+# ==============================================================================
+
+SNOWFLAKE_ACCOUNT={account_value}
+SNOWFLAKE_ROLE=SFE_REACT_AGENT_ROLE
+SNOWFLAKE_WAREHOUSE=SFE_REACT_AGENT_WH
+SNOWFLAKE_DATABASE=SNOWFLAKE_EXAMPLE
+SNOWFLAKE_SCHEMA=REACT_AGENT_STAGE
+
+# ==============================================================================
+# Cortex Agent Configuration
+# ==============================================================================
+
+SNOWFLAKE_AGENT_NAME=DoctorChris
+SNOWFLAKE_STAGE=DOCUMENTS_STAGE
+
+# ==============================================================================
+# Server Configuration
+# ==============================================================================
+
+PORT=3001
+NODE_ENV=development
+
+# ==============================================================================
+# Optional: Logging
+# ==============================================================================
+
+LOG_LEVEL=info
+
+# ==============================================================================
+# NOTES
+# ==============================================================================
+#
+# If you need to update your Snowflake account identifier:
+#   1. Edit SNOWFLAKE_ACCOUNT above
+#   2. Restart the application: ./tools/02_start.sh
+#
+# If you need to switch to password authentication:
+#   1. Change SNOWFLAKE_AUTH_TYPE=password
+#   2. Add: SNOWFLAKE_PASSWORD=your_password
+#   3. Restart the application
+#
+"""
+    
+    # Write .env file
+    with open(env_file, "w") as f:
+        f.write(env_content)
+    
+    print(f"   ✅ Created {env_file}")
+    print()
+    
+    if not args.account:
+        print("⚠️  IMPORTANT: Update your Snowflake account identifier")
+        print(f"   Edit {env_file}")
+        print("   Change: SNOWFLAKE_ACCOUNT=YOUR_ACCOUNT_IDENTIFIER")
+        print("   To your actual account (e.g., ORGNAME-ACCOUNTNAME)")
+        print()
+    
+    print("✅ Configuration complete!")
+    print()
+
+    # Summary
+    print("✅ Setup Complete!")
+    print()
+    print("Next steps:")
+    print("1. Run the SQL commands above in Snowsight")
+    print("2. Update your .env file with the settings shown above")
+    if args.account:
+        print(f"3. Test connection: snow connection test --account {args.account} --user {args.user} --private-key-path {private_key_path}")
+    print()
+
+
+def update_nodejs_client():
+    """Update snowflakeClient.js to support both password and key-pair auth."""
+    client_path = Path("server/src/snowflakeClient.js")
+    
+    new_content = """import fs from 'fs';
+import path from 'path';
+import snowflake from 'snowflake-sdk';
+
+let connectionPromise;
+
+function getRequiredEnv(name) {
+  const rawValue = process.env[name];
+  const value = rawValue?.trim();
+  if (!value) {
+    throw new Error(`Missing environment variable: ${name}`);
+  }
+  return value;
+}
+
+function getOptionalEnv(name) {
+  const value = process.env[name];
+  return value && value.trim() ? value.trim() : undefined;
+}
+
+export function getSnowflakeConnection() {
+  if (connectionPromise) {
+    return connectionPromise;
+  }
+
+  const account = getRequiredEnv('SNOWFLAKE_ACCOUNT');
+  const username = getRequiredEnv('SNOWFLAKE_USER');
+  const database = getRequiredEnv('SNOWFLAKE_DATABASE');
+  const schema = getRequiredEnv('SNOWFLAKE_SCHEMA');
+  const role = getOptionalEnv('SNOWFLAKE_ROLE');
+  const warehouse = getOptionalEnv('SNOWFLAKE_WAREHOUSE');
+  const region = getOptionalEnv('SNOWFLAKE_REGION');
+  const authType = getOptionalEnv('SNOWFLAKE_AUTH_TYPE') || 'password';
+
+  const connectionConfig = {
+    account,
+    username,
+    database,
+    schema,
+  };
+
+  // Configure authentication
+  if (authType === 'keypair') {
+    const privateKeyPath = getRequiredEnv('SNOWFLAKE_PRIVATE_KEY_PATH');
+    const privateKeyData = fs.readFileSync(privateKeyPath, 'utf8');
+    connectionConfig.authenticator = 'SNOWFLAKE_JWT';
+    connectionConfig.privateKey = privateKeyData;
+  } else {
+    // Default to password authentication
+    const password = getRequiredEnv('SNOWFLAKE_PASSWORD');
+    connectionConfig.password = password;
+  }
+
+  if (role) {
+    connectionConfig.role = role;
+  }
+  if (warehouse) {
+    connectionConfig.warehouse = warehouse;
+  }
+  if (region) {
+    connectionConfig.region = region;
+  }
+
+  const connection = snowflake.createConnection(connectionConfig);
+
+  connectionPromise = new Promise((resolve, reject) => {
+    connection.connect((err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(connection);
+      }
+    });
+  });
+
+  return connectionPromise;
+}
+
+export async function execute(sqlText, binds = []) {
+  const connection = await getSnowflakeConnection();
+  return new Promise((resolve, reject) => {
+    connection.execute({
+      sqlText,
+      binds,
+      complete: (err, _stmt, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows);
+        }
+      },
+    });
+  });
+}
+
+export async function uploadFileToStage(localPath, stagePath) {
+  const stage = getRequiredEnv('SNOWFLAKE_STAGE');
+  const absolutePath = path.resolve(localPath);
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`Local file does not exist: ${absolutePath}`);
+  }
+  const sql = `PUT file://${absolutePath} @${stage}/${stagePath} AUTO_COMPRESS=FALSE OVERWRITE=TRUE`;
+  await execute(sql);
+  return { stage, path: stagePath };
+}
+
+export async function downloadFileFromStage(stagePath, targetDir) {
+  const stage = getRequiredEnv('SNOWFLAKE_STAGE');
+  await fs.promises.mkdir(targetDir, { recursive: true });
+  const sql = `GET @${stage}/${stagePath} file://${targetDir} OVERWRITE=TRUE`;
+  const rows = await execute(sql);
+  const fileName = rows?.[0]?.file || stagePath;
+  const downloadedPath = path.join(targetDir, path.basename(fileName));
+  if (!fs.existsSync(downloadedPath)) {
+    throw new Error(`Failed to download file from stage to ${downloadedPath}`);
+  }
+  return downloadedPath;
+}
+
+export async function summarizeText(content, { prompt } = {}) {
+  const basePrompt =
+    prompt ||
+    'Provide a concise executive summary of the following document focusing on key findings and next actions.';
+
+  const sql = `
+    SELECT snowflake.cortex.summarize(CONCAT(?, '\\n\\nDocument:\\n', ?)) AS summary
+  `;
+
+  const rows = await execute(sql, [basePrompt, content]);
+  return rows?.[0]?.SUMMARY || '';
+}
+"""
+    
+    with open(client_path, "w") as f:
+        f.write(new_content)
+
+
+if __name__ == "__main__":
+    main()
+
