@@ -1,8 +1,8 @@
 # Snowflake Cortex Agent Chat Application
 
-⚠️ **DEMO PROJECT - NOT FOR PRODUCTION USE**
+![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=for-the-badge&logo=snowflake&logoColor=white)
 
-This is a reference implementation for educational purposes only.
+**Reference Implementation:** This code demonstrates production-grade architectural patterns and best practices. Review and customize security, networking, and business logic for your organization's specific requirements before deployment.
 
 **Database:** All artifacts created in `SNOWFLAKE_EXAMPLE` database  
 **Isolation:** Uses `SFE_` prefix for account-level objects
