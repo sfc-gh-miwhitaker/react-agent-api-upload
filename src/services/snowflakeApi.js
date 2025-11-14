@@ -61,12 +61,24 @@ export const describeAgent = async () => {
  * @param {string} message - User message
  * @param {string|null} threadId - Thread ID
  * @param {number} parentMessageId - Parent message ID
+ * @param {object|null} orchestrationBudget - Budget config for research mode
  * @param {function} onChunk - Callback for each chunk: (event) => void
  */
-export const streamMessageToAgent = async (message, threadId = null, parentMessageId = 0, onChunk) => {
+export const streamMessageToAgent = async (message, threadId = null, parentMessageId = 0, orchestrationBudget = null, onChunk) => {
   const trimmed = message?.trim();
   if (!trimmed) {
     throw new Error('Cannot send an empty message to the Cortex Agent.');
+  }
+
+  const requestBody = {
+    message: trimmed,
+    thread_id: threadId,
+    parent_message_id: parentMessageId,
+  };
+
+  // Add orchestration budget if provided (for research mode)
+  if (orchestrationBudget) {
+    requestBody.orchestration_budget = orchestrationBudget;
   }
 
   const response = await fetch(`${BACKEND_URL}/api/chat/stream`, {
@@ -74,11 +86,7 @@ export const streamMessageToAgent = async (message, threadId = null, parentMessa
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      message: trimmed,
-      thread_id: threadId,
-      parent_message_id: parentMessageId,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   await ensureResponseOk(response);
@@ -119,4 +127,72 @@ export const streamMessageToAgent = async (message, threadId = null, parentMessa
   } finally {
     reader.releaseLock();
   }
+};
+
+/**
+ * Upload a document to Snowflake stage
+ * @param {File} file - The file to upload
+ * @returns {Promise<object>} Upload result with stagePath, originalName, size, etc.
+ */
+export const uploadDocument = async (file) => {
+  if (!file) {
+    throw new Error('No file provided');
+  }
+
+  const formData = new FormData();
+  formData.append('document', file);
+
+  const response = await fetch(`${BACKEND_URL}/api/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  await ensureResponseOk(response);
+  return response.json();
+};
+
+/**
+ * List all documents from Snowflake stage
+ * @returns {Promise<Array>} Array of document objects with name, size, lastModified
+ */
+export const listDocuments = async () => {
+  const response = await fetch(`${BACKEND_URL}/api/documents`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  await ensureResponseOk(response);
+  return response.json();
+};
+
+/**
+ * Generate a summary of a document using Cortex AI
+ * @param {string} stagePath - The path to the document in the stage
+ * @param {string} prompt - Optional custom prompt for summarization
+ * @returns {Promise<object>} Summary result with summary text and bytesProcessed
+ */
+export const generateDocumentSummary = async (stagePath, prompt = null) => {
+  if (!stagePath) {
+    throw new Error('stagePath is required');
+  }
+
+  const requestBody = { stagePath };
+  if (prompt) {
+    requestBody.prompt = prompt;
+  }
+
+  const response = await fetch(`${BACKEND_URL}/api/summarize`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  await ensureResponseOk(response);
+  const result = await response.json();
+  return result.summary; // Return just the summary text
 };

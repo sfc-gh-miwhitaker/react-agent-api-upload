@@ -1,9 +1,11 @@
 import React, { useState, useRef } from 'react';
 import './MessageInput.css';
 
-const MessageInput = ({ onSendMessage, isLoading }) => {
+const MessageInput = ({ onSendMessage, isLoading, placeholder }) => {
   const [message, setMessage] = useState('');
   const textareaRef = useRef(null);
+
+  const defaultPlaceholder = "Type your message... (Press Enter to send, Shift+Enter for new line)";
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -41,7 +43,7 @@ const MessageInput = ({ onSendMessage, isLoading }) => {
             value={message}
             onChange={handleChange}
             onKeyPress={handleKeyPress}
-            placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+            placeholder={placeholder || defaultPlaceholder}
             className="message-textarea"
             disabled={isLoading}
             rows={1}

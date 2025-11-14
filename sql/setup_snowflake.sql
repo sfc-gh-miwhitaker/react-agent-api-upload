@@ -6,7 +6,7 @@
  *
  * PURPOSE:
  *   Provision all required Snowflake objects for the React Cortex Agent chat demo
- *   using Snowflake-native document intelligence (AI_PARSE_DOCUMENT + Cortex Search).
+ *   using Snowflake-native document intelligence (CORTEX.PARSE_DOCUMENT + event-driven processing).
  *
  * PREREQUISITE ROLE:
  *   Run as ACCOUNTADMIN (or role with CREATE WAREHOUSE privilege).
@@ -46,13 +46,9 @@ USE SCHEMA REACT_AGENT_STAGE;
 -- =============================================================================
 
 CREATE OR REPLACE STAGE DOCUMENTS_STAGE
-  ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')  -- Required for PARSE_DOCUMENT and scoped URLs
-  DIRECTORY = (
-    ENABLE = TRUE,
-    AUTO_REFRESH = TRUE,           -- Automatically detects new files
-    REFRESH_ON_CREATE = TRUE        -- Scans existing files immediately
-  )
-  COMMENT = 'DEMO: react-agent-api-upload - Auto-tracked document storage with server-side encryption';
+  ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')  -- Required for AI_PARSE_DOCUMENT
+  DIRECTORY = (ENABLE = TRUE)             -- Enable directory table for file tracking
+  COMMENT = 'DEMO: react-agent-api-upload - Document storage with directory table';
 
 -- =============================================================================
 -- Step 3: Document Metadata Table (Native AI Text Extraction)
@@ -64,16 +60,16 @@ CREATE OR REPLACE TABLE DOCUMENT_METADATA (
     FILE_SIZE INTEGER,
     LAST_MODIFIED TIMESTAMP_NTZ,
     
-    -- Extracted content using Snowflake-native AI_PARSE_DOCUMENT
+    -- Extracted content using SNOWFLAKE.CORTEX.PARSE_DOCUMENT
     EXTRACTED_TEXT STRING,
-    EXTRACTED_JSON VARIANT,          -- Full structured output
-    PAGE_COUNT INTEGER,
+    EXTRACTED_JSON VARIANT,          -- Reserved for future use
+    PAGE_COUNT INTEGER,              -- Reserved for future use
     
     -- Processing metadata
     EXTRACTION_TIMESTAMP TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-    PROCESSING_TIME_MS INTEGER
+    PROCESSING_TIME_MS INTEGER       -- Reserved for future use
 )
-COMMENT = 'DEMO: react-agent-api-upload - Document metadata with native AI extraction';
+COMMENT = 'DEMO: react-agent-api-upload - Document metadata with Cortex text extraction';
 
 -- =============================================================================
 -- Step 4: Stream for Event-Driven Processing
@@ -93,48 +89,41 @@ CREATE OR REPLACE TASK EXTRACT_DOCUMENT_TEXT_TASK
 WHEN
   SYSTEM$STREAM_HAS_DATA('NEW_DOCUMENTS_STREAM')
 AS
-DECLARE
-  files_processed INTEGER DEFAULT 0;
-BEGIN
-  -- Process new PDF files using native AI_PARSE_DOCUMENT
-  INSERT INTO DOCUMENT_METADATA (
-    FILE_PATH,
-    FILE_NAME,
-    FILE_SIZE,
-    LAST_MODIFIED,
-    EXTRACTED_JSON,
-    EXTRACTED_TEXT,
-    PAGE_COUNT,
-    PROCESSING_TIME_MS
-  )
-  SELECT 
-    RELATIVE_PATH AS FILE_PATH,
-    SUBSTR(RELATIVE_PATH, REGEXP_INSTR(RELATIVE_PATH, '[^/]+$')) AS FILE_NAME,
-    SIZE AS FILE_SIZE,
-    LAST_MODIFIED,
-    
-    -- ✅ Native AI_PARSE_DOCUMENT (10-50x faster than pypdf)
-    AI_PARSE_DOCUMENT(
-      TO_FILE('@DOCUMENTS_STAGE', RELATIVE_PATH),
-      {
-        'mode': 'OCR',              -- Handles both digital & scanned PDFs
-        'page_split': TRUE          -- Splits into pages for large docs
-      }
-    ) AS EXTRACTED_JSON,
-    
-    EXTRACTED_JSON:content::STRING AS EXTRACTED_TEXT,
-    ARRAY_SIZE(EXTRACTED_JSON:pages) AS PAGE_COUNT,
-    DATEDIFF('millisecond', LAST_MODIFIED, CURRENT_TIMESTAMP()) AS PROCESSING_TIME_MS
-    
-  FROM NEW_DOCUMENTS_STREAM
-  WHERE RELATIVE_PATH ILIKE '%.pdf'
-    AND METADATA$ACTION = 'INSERT';
-    
-  files_processed := SQLROWCOUNT;
-  SYSTEM$LOG_INFO('Processed ' || files_processed || ' new documents');
-  
-  RETURN 'Processed ' || files_processed || ' documents';
-END;
+  -- Process new files detected by stream
+  -- Uses AI_PARSE_DOCUMENT (latest Cortex function per Snowflake docs)
+  MERGE INTO DOCUMENT_METADATA AS target
+  USING (
+    SELECT 
+      RELATIVE_PATH,
+      SIZE,
+      LAST_MODIFIED
+    FROM NEW_DOCUMENTS_STREAM
+    WHERE METADATA$ACTION = 'INSERT'
+      AND METADATA$ISUPDATE = FALSE
+  ) AS source
+  ON target.FILE_PATH = source.RELATIVE_PATH
+  WHEN NOT MATCHED THEN
+    INSERT (
+      FILE_PATH,
+      FILE_NAME,
+      FILE_SIZE,
+      LAST_MODIFIED,
+      EXTRACTED_TEXT
+    )
+    VALUES (
+      source.RELATIVE_PATH,
+      SUBSTR(source.RELATIVE_PATH, REGEXP_INSTR(source.RELATIVE_PATH, '[^/]+$')),
+      source.SIZE,
+      source.LAST_MODIFIED,
+      -- AI_PARSE_DOCUMENT: Latest Cortex function (recommended over SNOWFLAKE.CORTEX.PARSE_DOCUMENT)
+      TRY_CAST(
+        AI_PARSE_DOCUMENT(
+          '@DOCUMENTS_STAGE',
+          source.RELATIVE_PATH,
+          {'mode': 'LAYOUT'}
+        ) AS STRING
+      )
+    );
 
 -- Start the automated task
 ALTER TASK EXTRACT_DOCUMENT_TEXT_TASK RESUME;
@@ -297,7 +286,7 @@ CREATE OR REPLACE AGENT DoctorChris
   instructions:
     system: |
       You are Dr. Chris, an empathetic documentation specialist who helps users understand staged documents.
-      You use Snowflake's native document intelligence (AI_PARSE_DOCUMENT + Cortex Search) for fast, accurate responses.
+      You use Snowflake's native document intelligence (CORTEX.PARSE_DOCUMENT) for fast, accurate responses.
       Always ground your answers in the tool outputs - never fabricate information.
       
     orchestration: |
@@ -383,7 +372,8 @@ CREATE OR REPLACE AGENT DoctorChris
 -- Step 9: Security - Roles and Users
 -- =============================================================================
 
-USE ROLE SECURITYADMIN;
+-- Use ACCOUNTADMIN for security setup (SECURITYADMIN may not be available to all users)
+USE ROLE ACCOUNTADMIN;
 
 -- Create service role
 CREATE ROLE IF NOT EXISTS SFE_REACT_AGENT_ROLE
@@ -433,7 +423,53 @@ CREATE USER IF NOT EXISTS SFE_REACT_AGENT_USER
   DISPLAY_NAME = 'React Agent Service User'
   COMMENT = 'DEMO: react-agent-api-upload - Service principal for key-pair authentication';
 
+-- CRITICAL: Grant the role to the user (must be done as ACCOUNTADMIN)
+-- This grant is essential for key-pair authentication to work
 GRANT ROLE SFE_REACT_AGENT_ROLE TO USER SFE_REACT_AGENT_USER;
+
+-- =============================================================================
+-- Step 10: Verification (Critical - Catches Common Issues Early)
+-- =============================================================================
+
+SELECT '🔍 Verifying setup...' AS status;
+
+-- Verify role grant to user
+SELECT 'Checking role grant to user...' AS status;
+SHOW GRANTS TO USER SFE_REACT_AGENT_USER;
+
+-- Verify task is running
+SELECT 'Checking task status...' AS status;
+SHOW TASKS LIKE 'EXTRACT_DOCUMENT_TEXT_TASK';
+
+-- Verify stream is created
+SELECT 'Checking stream...' AS status;
+SHOW STREAMS LIKE 'NEW_DOCUMENTS_STREAM';
+
+-- Verify directory table is enabled on stage
+SELECT 'Checking directory table...' AS status;
+DESC STAGE DOCUMENTS_STAGE;
+
+-- Test directory table access
+SELECT 'Testing directory table (should show 0 files if empty)...' AS status;
+SELECT COUNT(*) AS file_count FROM DIRECTORY(@DOCUMENTS_STAGE);
+
+-- Verify agent exists
+SELECT 'Checking agent...' AS status;
+SHOW AGENTS LIKE 'DoctorChris';
+
+-- Final verification message
+SELECT '═══════════════════════════════════════════════════════════' AS verification;
+SELECT '✅ VERIFICATION COMPLETE' AS verification;
+SELECT '═══════════════════════════════════════════════════════════' AS verification;
+SELECT '' AS verification;
+SELECT 'Expected Results:' AS verification;
+SELECT '  ✓ 1 role grant to SFE_REACT_AGENT_USER' AS verification;
+SELECT '  ✓ Task EXTRACT_DOCUMENT_TEXT_TASK in STARTED state' AS verification;
+SELECT '  ✓ Stream NEW_DOCUMENTS_STREAM exists' AS verification;
+SELECT '  ✓ Directory table enabled on DOCUMENTS_STAGE' AS verification;
+SELECT '  ✓ Agent DoctorChris exists' AS verification;
+SELECT '' AS verification;
+SELECT 'If any checks failed, review error messages above.' AS verification;
 
 -- =============================================================================
 -- ✅ SETUP COMPLETE!
@@ -441,28 +477,44 @@ GRANT ROLE SFE_REACT_AGENT_ROLE TO USER SFE_REACT_AGENT_USER;
 --
 -- NEXT STEPS:
 --
--- 1. Configure key-pair authentication (recommended):
+-- 1. ⚠️  CRITICAL: Register your RSA public key with the service user
+--    
+--    The backend will fail with "JWT token is invalid" if this step is skipped!
 --
---    macOS/Linux:  ./tools/01_setup_keypair_auth.sh --account YOUR_ACCOUNT_ID
---    Windows:      tools\01_setup_keypair_auth.bat --account YOUR_ACCOUNT_ID
+--    Run this command to get your public key (from project root):
+--    
+--    macOS/Linux:
+--      sed -e '/-----BEGIN/d' -e '/-----END/d' config/keys/rsa_key.pub | tr -d '\n'
+--    
+--    Windows (PowerShell):
+--      (Get-Content config/keys/rsa_key.pub | Select-String -NotMatch "-----") -join ""
+--    
+--    Then run in Snowsight:
+--    
+--      USE ROLE ACCOUNTADMIN;
+--      ALTER USER SFE_REACT_AGENT_USER SET RSA_PUBLIC_KEY='<paste_key_here>';
+--      DESC USER SFE_REACT_AGENT_USER;  -- Verify RSA_PUBLIC_KEY_FP is set
 --
---    This automatically creates config/.env and generates RSA keys.
---
--- 2. Copy the ALTER USER SQL from the tool output and run it in Snowsight.
---
--- 3. Start the application:
+-- 2. Start the application:
 --
 --    macOS/Linux:  ./tools/02_start.sh
 --    Windows:      tools\02_start.bat
+--
+-- 3. Upload documents and test:
+--
+--    - Open http://localhost:3002
+--    - Upload a PDF, Word doc, or other supported file
+--    - Wait ~1 minute for automatic processing (task runs every minute)
+--    - Ask: "What documents do I have?"
 --
 -- =============================================================================
 -- ARCHITECTURE HIGHLIGHTS
 -- =============================================================================
 --
 -- ✅ Snowflake-Native Document Intelligence:
---    - AI_PARSE_DOCUMENT: 10-50x faster than pypdf
---    - Cortex Search: Sub-second semantic search (vs 30+ sec LLM processing)
---    - Event-Driven: Auto-processes new files within 1 minute
+--    - AI_PARSE_DOCUMENT: Latest Cortex function for text extraction from PDFs, Word, Excel, PowerPoint
+--    - Event-Driven Architecture: Auto-processes new files within 1 minute using Directory Tables + Streams + Tasks
+--    - Cortex Search: Semantic search service (available for advanced queries)
 --    - Zero Infrastructure: Fully serverless, auto-scaling
 --
 -- ✅ Cost & Performance:
@@ -474,5 +526,44 @@ GRANT ROLE SFE_REACT_AGENT_ROLE TO USER SFE_REACT_AGENT_USER;
 --    - Key-pair authentication (no passwords in code)
 --    - Dedicated service role with least-privilege grants
 --    - All data stays within Snowflake governance boundary
+--
+-- =============================================================================
+-- TROUBLESHOOTING COMMON ISSUES
+-- =============================================================================
+--
+-- Issue 1: "JWT token is invalid"
+-- ----------------------------------------
+-- Cause: RSA public key not registered with user
+-- Solution: Run the ALTER USER command from NEXT STEPS section above
+-- Verify: DESC USER SFE_REACT_AGENT_USER;
+--         Check that RSA_PUBLIC_KEY_FP column shows a fingerprint value
+--
+-- Issue 2: "Role 'SFE_REACT_AGENT_ROLE' is not granted to this user"
+-- ----------------------------------------
+-- Cause: Role grant to user is missing or failed
+-- Solution: Run as ACCOUNTADMIN:
+--           GRANT ROLE SFE_REACT_AGENT_ROLE TO USER SFE_REACT_AGENT_USER;
+-- Verify: SHOW GRANTS TO USER SFE_REACT_AGENT_USER;
+--
+-- Issue 3: "Documents not being processed by task"
+-- ----------------------------------------
+-- Cause: Task is suspended or stream has no data
+-- Solution: Check task status: SHOW TASKS LIKE 'EXTRACT_DOCUMENT_TEXT_TASK';
+--           If SUSPENDED, resume it: ALTER TASK EXTRACT_DOCUMENT_TEXT_TASK RESUME;
+-- Verify: Upload a file, wait 60 seconds, then:
+--         SELECT * FROM DOCUMENT_METADATA;
+--
+-- Issue 4: "Directory table returns no files"
+-- ----------------------------------------
+-- Cause: Directory table needs initial refresh
+-- Solution: ALTER STAGE DOCUMENTS_STAGE REFRESH;
+-- Verify: SELECT COUNT(*) FROM DIRECTORY(@DOCUMENTS_STAGE);
+--
+-- Issue 5: "AI_PARSE_DOCUMENT fails with encryption error"
+-- ----------------------------------------
+-- Cause: Stage missing server-side encryption
+-- Solution: ALTER STAGE DOCUMENTS_STAGE SET ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE');
+-- Verify: DESC STAGE DOCUMENTS_STAGE;
+--         Check that ENCRYPTION_TYPE shows 'SNOWFLAKE_SSE'
 --
 -- =============================================================================

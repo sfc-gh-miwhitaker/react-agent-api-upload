@@ -1,6 +1,13 @@
-# Snowflake Cortex Agent Chat Application
+# Snowflake Cortex Document Intelligence
 
 ![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=for-the-badge&logo=snowflake&logoColor=white)
+
+**A unified document intelligence platform powered by Snowflake Cortex AI that enables:**
+- 📄 **Document Upload & Management** - Upload PDFs, Word docs, presentations, and more
+- 💬 **Conversational Document Q&A** - Ask questions about your uploaded documents
+- 📝 **AI-Powered Summarization** - Generate custom summaries with flexible prompts
+- 🔬 **Research Mode** - Deep analysis for complex document queries
+- 🌍 **Translation & Extraction** - Translate documents or extract specific information
 
 **Reference Implementation:** This code demonstrates production-grade architectural patterns and best practices. Review and customize security, networking, and business logic for your organization's specific requirements before deployment.
 
@@ -66,7 +73,14 @@ tools\04_stop.bat     # Stop all services
 
 ## Overview
 
-This repository delivers a React-based chat interface for interacting with Snowflake Cortex Agents over the documented REST API. The application focuses on a secure configuration experience, streaming message delivery, and operational tooling that aligns with Snowflake demo governance standards.
+This repository delivers a **unified document intelligence platform** built on Snowflake Cortex AI. The application combines document management with conversational AI, allowing users to upload documents and interact with them through natural language queries.
+
+**Key Architecture:**
+- **Frontend:** React-based unified interface (document library + chat)
+- **Backend:** Node.js Express API with Snowflake integration
+- **AI Engine:** Snowflake Cortex Agent API with streaming support
+- **Document Processing:** Snowflake's `PARSE_DOCUMENT` and `CORTEX.COMPLETE` functions
+- **Security:** Key-pair authentication with JWT tokens
 
 **📚 Documentation:**
 - `README.md` (this file) - Quick start guide

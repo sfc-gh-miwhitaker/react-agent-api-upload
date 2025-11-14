@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import ChatInterface from './components/ChatInterface';
-import DocumentSummaryPanel from './components/DocumentSummaryPanel';
+import DocumentIntelligence from './components/DocumentIntelligence';
 import { fetchAgentConfig } from './services/snowflakeApi';
 import './App.css';
 
 function App() {
   const [agentConfig, setAgentConfig] = useState(null);
-  const [activeView, setActiveView] = useState('chat');
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [configError, setConfigError] = useState('');
 
@@ -40,58 +38,31 @@ function App() {
 
   return (
     <div className="App">
-      <header className="app-header">
-        <h1>Snowflake Cortex Agent Chat</h1>
-        <div className="header-actions">
-          {!loadingConfig && !configError && agentConfig && (
-            <div className="view-toggle">
-              <button
-                type="button"
-                className={activeView === 'chat' ? 'toggle-button active' : 'toggle-button'}
-                onClick={() => setActiveView('chat')}
-              >
-                Chat
-              </button>
-              <button
-                type="button"
-                className={activeView === 'summary' ? 'toggle-button active' : 'toggle-button'}
-                onClick={() => setActiveView('summary')}
-              >
-                Document Summary
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <main className="app-main">
-        {loadingConfig && (
-          <div className="status-card">
-            <p>Loading Cortex Agent configuration...</p>
+      {loadingConfig && (
+        <div className="app-loading">
+          <div className="loading-card">
+            <h2>🔄 Loading Document Intelligence...</h2>
+            <p>Connecting to Snowflake Cortex Agent</p>
           </div>
-        )}
+        </div>
+      )}
 
-        {!loadingConfig && configError && (
-          <div className="status-card error">
-            <h2>Configuration Error</h2>
+      {!loadingConfig && configError && (
+        <div className="app-error">
+          <div className="error-card">
+            <h2>⚠️ Configuration Error</h2>
             <p>{configError}</p>
             <p>
               Ensure the backend service is running and key-pair variables such as `SNOWFLAKE_AGENT_NAME` and
               `SNOWFLAKE_PRIVATE_KEY_PATH` are populated in `config/.env`.
             </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {!loadingConfig && !configError && agentConfig && (
-          <>
-            {activeView === 'chat' ? (
-              <ChatInterface config={agentConfig} />
-            ) : (
-              <DocumentSummaryPanel />
-            )}
-          </>
-        )}
-      </main>
+      {!loadingConfig && !configError && agentConfig && (
+        <DocumentIntelligence config={agentConfig} />
+      )}
     </div>
   );
 }

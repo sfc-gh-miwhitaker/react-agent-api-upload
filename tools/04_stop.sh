@@ -75,6 +75,19 @@ fi
 stop_by_port "Backend" $BACKEND_PORT
 stop_by_port "Frontend" $FRONTEND_PORT
 
+# Also check port 3000 (React dev server default)
+stop_by_port "React Dev Server" 3000
+
+# Nuclear option: Kill any node processes in this project directory
+echo ""
+echo "🔍 Checking for orphaned node processes..."
+ORPHANED=$(ps aux | grep "[n]ode.*react-agent-api-upload" | awk '{print $2}' || echo "")
+if [ -n "$ORPHANED" ]; then
+    echo "$ORPHANED" | xargs kill -9 2>/dev/null || true
+    echo "✅ Cleaned up orphaned processes"
+    STOPPED_ANY=true
+fi
+
 # Clean up PID directory if empty
 if [ -d "$PIDS_DIR" ] && [ -z "$(ls -A "$PIDS_DIR")" ]; then
     rmdir "$PIDS_DIR" 2>/dev/null || true

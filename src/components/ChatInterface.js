@@ -4,6 +4,12 @@ import MessageInput from './MessageInput';
 import { streamMessageToAgent } from '../services/snowflakeApi';
 import './ChatInterface.css';
 
+// Orchestration budget modes (similar to Snowflake Intelligence)
+const ORCHESTRATION_MODES = {
+  standard: { seconds: 30, tokens: 8000 },
+  research: { seconds: 120, tokens: 32000 },
+};
+
 const createAssistantGreeting = (agentName) => ({
   id: 1,
   role: 'assistant',
@@ -17,6 +23,7 @@ const ChatInterface = ({ config }) => {
   const [error, setError] = useState(null);
   const [threadId, setThreadId] = useState(null);
   const [parentMessageId, setParentMessageId] = useState(0);
+  const [researchMode, setResearchMode] = useState(false);
   const messagesEndRef = useRef(null);
 
   const databaseLabel = config.database || 'DATABASE';
@@ -81,7 +88,11 @@ const ChatInterface = ({ config }) => {
     let streamThreadId = threadId;
 
     try {
-      await streamMessageToAgent(content, threadId, parentMessageId, (event) => {
+      // Select orchestration budget based on research mode
+      const orchestrationBudget = researchMode ? ORCHESTRATION_MODES.research : ORCHESTRATION_MODES.standard;
+      console.log('[Frontend] Research Mode:', researchMode, '| Budget:', orchestrationBudget);
+
+      await streamMessageToAgent(content, threadId, parentMessageId, orchestrationBudget, (event) => {
         console.log('[Frontend] Received event:', event.type, event);
         if (event.type === 'thread_created') {
           streamThreadId = event.thread_id;
@@ -171,9 +182,19 @@ const ChatInterface = ({ config }) => {
             Connected to {databaseLabel}.{schemaLabel}
           </span>
         </div>
-        <button className="clear-button" onClick={clearChat}>
-          Clear Chat
-        </button>
+        <div className="header-controls">
+          <button
+            className={`research-mode-toggle ${researchMode ? 'active' : ''}`}
+            onClick={() => setResearchMode(!researchMode)}
+            title={researchMode ? 'Research Mode ON - More thorough, takes longer' : 'Research Mode OFF - Balanced speed and quality'}
+          >
+            <span className="toggle-icon">🔬</span>
+            Research Mode
+          </button>
+          <button className="clear-button" onClick={clearChat}>
+            Clear Chat
+          </button>
+        </div>
       </div>
 
       <div className="chat-container">
