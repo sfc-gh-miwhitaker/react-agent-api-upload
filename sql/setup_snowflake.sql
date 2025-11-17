@@ -91,23 +91,23 @@ $$
 DECLARE
   rows_upserted INTEGER DEFAULT 0;
 BEGIN
-  WITH pending AS (
-    SELECT
-      RELATIVE_PATH,
-      SUBSTR(RELATIVE_PATH, REGEXP_INSTR(RELATIVE_PATH, '[^/]+$')) AS FILE_NAME,
-      SIZE,
-      CAST(LAST_MODIFIED AS TIMESTAMP_NTZ) AS LAST_MODIFIED,
-      SNOWFLAKE.CORTEX.PARSE_DOCUMENT(
-        '@DOCUMENTS_STAGE',
-        RELATIVE_PATH,
-        {'mode': 'LAYOUT'}
-      ) AS parsed
-    FROM NEW_DOCUMENTS_STREAM
-    WHERE METADATA$ACTION = 'INSERT'
-      AND METADATA$ISUPDATE = FALSE
-  )
   MERGE INTO DOCUMENT_METADATA AS target
   USING (
+    WITH pending AS (
+      SELECT
+        RELATIVE_PATH,
+        SUBSTR(RELATIVE_PATH, REGEXP_INSTR(RELATIVE_PATH, '[^/]+$')) AS FILE_NAME,
+        SIZE,
+        CAST(LAST_MODIFIED AS TIMESTAMP_NTZ) AS LAST_MODIFIED,
+        SNOWFLAKE.CORTEX.PARSE_DOCUMENT(
+          '@DOCUMENTS_STAGE',
+          RELATIVE_PATH,
+          {'mode': 'LAYOUT'}
+        ) AS parsed
+      FROM NEW_DOCUMENTS_STREAM
+      WHERE METADATA$ACTION = 'INSERT'
+        AND METADATA$ISUPDATE = FALSE
+    )
     SELECT
       RELATIVE_PATH,
       FILE_NAME,
@@ -473,45 +473,8 @@ GRANT ROLE SFE_REACT_AGENT_ROLE TO USER SFE_REACT_AGENT_USER;
 -- Step 10: Verification (Critical - Catches Common Issues Early)
 -- =============================================================================
 
-SELECT '🔍 Verifying setup...' AS status;
-
--- Verify role grant to user
-SELECT 'Checking role grant to user...' AS status;
-SHOW GRANTS TO USER SFE_REACT_AGENT_USER;
-
--- Verify task is running
-SELECT 'Checking task status...' AS status;
-SHOW TASKS LIKE 'EXTRACT_DOCUMENT_TEXT_TASK';
-
--- Verify stream is created
-SELECT 'Checking stream...' AS status;
-SHOW STREAMS LIKE 'NEW_DOCUMENTS_STREAM';
-
--- Verify directory table is enabled on stage
-SELECT 'Checking directory table...' AS status;
-DESC STAGE DOCUMENTS_STAGE;
-
--- Test directory table access
-SELECT 'Testing directory table (should show 0 files if empty)...' AS status;
-SELECT COUNT(*) AS file_count FROM DIRECTORY(@DOCUMENTS_STAGE);
-
--- Verify agent exists
-SELECT 'Checking agent...' AS status;
-SHOW AGENTS LIKE 'DoctorChris';
-
--- Final verification message
-SELECT '═══════════════════════════════════════════════════════════' AS verification;
-SELECT '✅ VERIFICATION COMPLETE' AS verification;
-SELECT '═══════════════════════════════════════════════════════════' AS verification;
-SELECT '' AS verification;
-SELECT 'Expected Results:' AS verification;
-SELECT '  ✓ 1 role grant to SFE_REACT_AGENT_USER' AS verification;
-SELECT '  ✓ Task EXTRACT_DOCUMENT_TEXT_TASK in STARTED state' AS verification;
-SELECT '  ✓ Stream NEW_DOCUMENTS_STREAM exists' AS verification;
-SELECT '  ✓ Directory table enabled on DOCUMENTS_STAGE' AS verification;
-SELECT '  ✓ Agent DoctorChris exists' AS verification;
-SELECT '' AS verification;
-SELECT 'If any checks failed, review error messages above.' AS verification;
+-- Post-Setup Validation
+-- Run `sql/verify_setup.sql` to confirm all objects are ready before starting the app.
 
 -- =============================================================================
 -- ✅ SETUP COMPLETE!

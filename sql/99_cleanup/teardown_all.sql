@@ -80,4 +80,7 @@ DROP USER IF EXISTS SFE_REACT_AGENT_USER;
 DROP ROLE IF EXISTS SFE_REACT_AGENT_ROLE;
 
 -- Note: SNOWFLAKE_EXAMPLE database retained per cleanup standards.
--- Note: SFE_* API integrations retained per shared resource rule.
+-- Note: Leave SFE_* API integrations in place—they are shared across demos.
+
+-- Validation: confirm shared SFE_* integrations still exist (should return rows)
+SHOW INTEGRATIONS LIKE 'SFE_%';

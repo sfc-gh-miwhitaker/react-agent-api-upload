@@ -84,7 +84,7 @@ This repository delivers a **unified document intelligence platform** built on S
 
 **📚 Documentation:**
 - `README.md` (this file) - Quick start guide
-- `docs/01-KEYPAIR-AUTH.md` - Secure authentication setup
+- docs/01-KEYPAIR-AUTH.md - Secure authentication setup
 - `diagrams/` - Architecture diagrams (data flow, network, auth)
 - `sql/setup_snowflake.sql` - Complete Snowflake provisioning
 - `sql/99_cleanup/teardown_all.sql` - Complete cleanup script
