@@ -46,8 +46,8 @@ USE SCHEMA REACT_AGENT_STAGE;
 -- =============================================================================
 
 CREATE OR REPLACE STAGE DOCUMENTS_STAGE
-  ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')  -- Required for AI_PARSE_DOCUMENT
-  DIRECTORY = (ENABLE = TRUE)             -- Enable directory table for file tracking
+  ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')  -- Required so PARSE_DOCUMENT can read files
+  DIRECTORY = (ENABLE = TRUE)            -- Enable directory table for file tracking
   COMMENT = 'DEMO: react-agent-api-upload - Document storage with directory table';
 
 -- =============================================================================
@@ -80,8 +80,77 @@ ON STAGE DOCUMENTS_STAGE
 COMMENT = 'DEMO: react-agent-api-upload - Tracks new file uploads for auto-processing';
 
 -- =============================================================================
--- Step 5: Automated Document Processing Task
+-- Step 5: Document Processing Procedure + Task
 -- =============================================================================
+
+CREATE OR REPLACE PROCEDURE PROCESS_NEW_DOCUMENTS()
+RETURNS STRING
+LANGUAGE SQL
+AS
+$$
+DECLARE
+  rows_upserted INTEGER DEFAULT 0;
+BEGIN
+  WITH pending AS (
+    SELECT
+      RELATIVE_PATH,
+      SUBSTR(RELATIVE_PATH, REGEXP_INSTR(RELATIVE_PATH, '[^/]+$')) AS FILE_NAME,
+      SIZE,
+      CAST(LAST_MODIFIED AS TIMESTAMP_NTZ) AS LAST_MODIFIED,
+      SNOWFLAKE.CORTEX.PARSE_DOCUMENT(
+        '@DOCUMENTS_STAGE',
+        RELATIVE_PATH,
+        {'mode': 'LAYOUT'}
+      ) AS parsed
+    FROM NEW_DOCUMENTS_STREAM
+    WHERE METADATA$ACTION = 'INSERT'
+      AND METADATA$ISUPDATE = FALSE
+  )
+  MERGE INTO DOCUMENT_METADATA AS target
+  USING (
+    SELECT
+      RELATIVE_PATH,
+      FILE_NAME,
+      SIZE,
+      LAST_MODIFIED,
+      parsed:content::STRING AS EXTRACTED_TEXT,
+      parsed:metadata:pageCount::INT AS PAGE_COUNT
+    FROM pending
+  ) AS source
+  ON target.FILE_PATH = source.RELATIVE_PATH
+  WHEN MATCHED THEN
+    UPDATE SET
+      FILE_NAME = source.FILE_NAME,
+      FILE_SIZE = source.SIZE,
+      LAST_MODIFIED = source.LAST_MODIFIED,
+      EXTRACTED_TEXT = source.EXTRACTED_TEXT,
+      PAGE_COUNT = COALESCE(source.PAGE_COUNT, target.PAGE_COUNT),
+      EXTRACTION_TIMESTAMP = CURRENT_TIMESTAMP()
+  WHEN NOT MATCHED THEN
+    INSERT (
+      FILE_PATH,
+      FILE_NAME,
+      FILE_SIZE,
+      LAST_MODIFIED,
+      EXTRACTED_TEXT,
+      PAGE_COUNT,
+      EXTRACTION_TIMESTAMP
+    )
+    VALUES (
+      source.RELATIVE_PATH,
+      source.FILE_NAME,
+      source.SIZE,
+      source.LAST_MODIFIED,
+      source.EXTRACTED_TEXT,
+      source.PAGE_COUNT,
+      CURRENT_TIMESTAMP()
+    );
+
+  rows_upserted := SQLROWCOUNT;
+
+  RETURN 'Processed ' || rows_upserted || ' document(s)';
+END;
+$$;
 
 CREATE OR REPLACE TASK EXTRACT_DOCUMENT_TEXT_TASK
   WAREHOUSE = SFE_REACT_AGENT_WH
@@ -89,44 +158,12 @@ CREATE OR REPLACE TASK EXTRACT_DOCUMENT_TEXT_TASK
 WHEN
   SYSTEM$STREAM_HAS_DATA('NEW_DOCUMENTS_STREAM')
 AS
-  -- Process new files detected by stream
-  -- Uses AI_PARSE_DOCUMENT (latest Cortex function per Snowflake docs)
-  MERGE INTO DOCUMENT_METADATA AS target
-  USING (
-    SELECT 
-      RELATIVE_PATH,
-      SIZE,
-      LAST_MODIFIED
-    FROM NEW_DOCUMENTS_STREAM
-    WHERE METADATA$ACTION = 'INSERT'
-      AND METADATA$ISUPDATE = FALSE
-  ) AS source
-  ON target.FILE_PATH = source.RELATIVE_PATH
-  WHEN NOT MATCHED THEN
-    INSERT (
-      FILE_PATH,
-      FILE_NAME,
-      FILE_SIZE,
-      LAST_MODIFIED,
-      EXTRACTED_TEXT
-    )
-    VALUES (
-      source.RELATIVE_PATH,
-      SUBSTR(source.RELATIVE_PATH, REGEXP_INSTR(source.RELATIVE_PATH, '[^/]+$')),
-      source.SIZE,
-      source.LAST_MODIFIED,
-      -- AI_PARSE_DOCUMENT: Latest Cortex function (recommended over SNOWFLAKE.CORTEX.PARSE_DOCUMENT)
-      TRY_CAST(
-        AI_PARSE_DOCUMENT(
-          '@DOCUMENTS_STAGE',
-          source.RELATIVE_PATH,
-          {'mode': 'LAYOUT'}
-        ) AS STRING
-      )
-    );
+  CALL PROCESS_NEW_DOCUMENTS();
 
--- Start the automated task
 ALTER TASK EXTRACT_DOCUMENT_TEXT_TASK RESUME;
+
+-- Initial backfill (captures any files uploaded before the task ran)
+CALL PROCESS_NEW_DOCUMENTS();
 
 -- =============================================================================
 -- Step 6: Cortex Search Service for Semantic Document Search
@@ -383,6 +420,9 @@ CREATE ROLE IF NOT EXISTS SFE_REACT_AGENT_ROLE
 GRANT USAGE ON WAREHOUSE SFE_REACT_AGENT_WH TO ROLE SFE_REACT_AGENT_ROLE;
 GRANT OPERATE ON WAREHOUSE SFE_REACT_AGENT_WH TO ROLE SFE_REACT_AGENT_ROLE;
 
+-- Grant EXECUTE TASK privilege (CRITICAL - without this, tasks will fail)
+GRANT EXECUTE TASK ON ACCOUNT TO ROLE SFE_REACT_AGENT_ROLE;
+
 -- Grant database and schema access
 GRANT USAGE ON DATABASE SNOWFLAKE_EXAMPLE TO ROLE SFE_REACT_AGENT_ROLE;
 GRANT USAGE ON SCHEMA SNOWFLAKE_EXAMPLE.REACT_AGENT_STAGE TO ROLE SFE_REACT_AGENT_ROLE;
@@ -403,6 +443,8 @@ GRANT SELECT ON VIEW SNOWFLAKE_EXAMPLE.REACT_AGENT_STAGE.AVAILABLE_DOCUMENTS
 GRANT USAGE ON PROCEDURE SNOWFLAKE_EXAMPLE.REACT_AGENT_STAGE.ANSWER_DOCUMENT_QUESTION(STRING) 
   TO ROLE SFE_REACT_AGENT_ROLE;
 GRANT USAGE ON PROCEDURE SNOWFLAKE_EXAMPLE.REACT_AGENT_STAGE.TRANSLATE_DOCUMENT(STRING, STRING) 
+  TO ROLE SFE_REACT_AGENT_ROLE;
+GRANT USAGE ON PROCEDURE SNOWFLAKE_EXAMPLE.REACT_AGENT_STAGE.PROCESS_NEW_DOCUMENTS()
   TO ROLE SFE_REACT_AGENT_ROLE;
 
 -- Grant Cortex Search service access (for future use)
@@ -512,7 +554,7 @@ SELECT 'If any checks failed, review error messages above.' AS verification;
 -- =============================================================================
 --
 -- ✅ Snowflake-Native Document Intelligence:
---    - AI_PARSE_DOCUMENT: Latest Cortex function for text extraction from PDFs, Word, Excel, PowerPoint
+--    - SNOWFLAKE.CORTEX.PARSE_DOCUMENT: Extracts text from PDFs, Word, Excel, PowerPoint
 --    - Event-Driven Architecture: Auto-processes new files within 1 minute using Directory Tables + Streams + Tasks
 --    - Cortex Search: Semantic search service (available for advanced queries)
 --    - Zero Infrastructure: Fully serverless, auto-scaling
@@ -559,7 +601,7 @@ SELECT 'If any checks failed, review error messages above.' AS verification;
 -- Solution: ALTER STAGE DOCUMENTS_STAGE REFRESH;
 -- Verify: SELECT COUNT(*) FROM DIRECTORY(@DOCUMENTS_STAGE);
 --
--- Issue 5: "AI_PARSE_DOCUMENT fails with encryption error"
+-- Issue 5: "PARSE_DOCUMENT fails with encryption error"
 -- ----------------------------------------
 -- Cause: Stage missing server-side encryption
 -- Solution: ALTER STAGE DOCUMENTS_STAGE SET ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE');

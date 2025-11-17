@@ -1,10 +1,5 @@
 /*******************************************************************************
- * SETUP VERIFICATION SCRIPT
- * 
- * Run this script to verify that all Snowflake objects are correctly configured.
- * This helps diagnose common setup issues before attempting to start the application.
- * 
- * Usage: Run this entire script in Snowsight as ACCOUNTADMIN
+ * SNOWFLAKE SETUP VERIFICATION
  ******************************************************************************/
 
 USE ROLE ACCOUNTADMIN;
@@ -12,221 +7,210 @@ USE WAREHOUSE SFE_REACT_AGENT_WH;
 USE DATABASE SNOWFLAKE_EXAMPLE;
 USE SCHEMA REACT_AGENT_STAGE;
 
-SELECT '═══════════════════════════════════════════════════════════' AS divider;
-SELECT '🔍 SNOWFLAKE SETUP VERIFICATION' AS title;
-SELECT '═══════════════════════════════════════════════════════════' AS divider;
+-- Snapshot metadata ----------------------------------------------------------
+SHOW WAREHOUSES;
+CREATE OR REPLACE TEMP TABLE VERIFY_WH AS
+SELECT * FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "name" = 'SFE_REACT_AGENT_WH';
 
--- =============================================================================
--- Check 1: Warehouse
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '1️⃣  Checking Warehouse...' AS test;
-SHOW WAREHOUSES LIKE 'SFE_REACT_AGENT_WH';
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: Warehouse exists'
-  ELSE '❌ FAIL: Warehouse not found'
-END AS result
+SHOW DATABASES;
+CREATE OR REPLACE TEMP TABLE VERIFY_DB AS
+SELECT * FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "name" = 'SNOWFLAKE_EXAMPLE';
+
+SHOW SCHEMAS IN DATABASE SNOWFLAKE_EXAMPLE;
+CREATE OR REPLACE TEMP TABLE VERIFY_SCHEMA AS
+SELECT * FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "name" = 'REACT_AGENT_STAGE';
+
+SHOW STAGES IN SCHEMA REACT_AGENT_STAGE;
+CREATE OR REPLACE TEMP TABLE VERIFY_STAGE AS
+SELECT * FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "name" = 'DOCUMENTS_STAGE';
+
+DESCRIBE STAGE DOCUMENTS_STAGE;
+CREATE OR REPLACE TEMP TABLE VERIFY_STAGE_DESC AS
+SELECT "property" AS PROPERTY, "property_value" AS PROPERTY_VALUE
 FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
 
--- =============================================================================
--- Check 2: Database and Schema
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '2️⃣  Checking Database and Schema...' AS test;
-SHOW DATABASES LIKE 'SNOWFLAKE_EXAMPLE';
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: Database exists'
-  ELSE '❌ FAIL: Database not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+CREATE OR REPLACE TEMP TABLE VERIFY_STAGE_INFO AS
+SELECT *
+FROM INFORMATION_SCHEMA.STAGES
+WHERE STAGE_NAME = 'DOCUMENTS_STAGE';
 
-SHOW SCHEMAS LIKE 'REACT_AGENT_STAGE' IN DATABASE SNOWFLAKE_EXAMPLE;
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: Schema exists'
-  ELSE '❌ FAIL: Schema not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+SHOW STREAMS IN SCHEMA REACT_AGENT_STAGE;
+CREATE OR REPLACE TEMP TABLE VERIFY_STREAM AS
+SELECT "name" AS name FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "name" = 'NEW_DOCUMENTS_STREAM';
 
--- =============================================================================
--- Check 3: Stage with Directory Table
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '3️⃣  Checking Stage...' AS test;
-SHOW STAGES LIKE 'DOCUMENTS_STAGE';
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: Stage exists'
-  ELSE '❌ FAIL: Stage not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+SHOW TASKS IN SCHEMA REACT_AGENT_STAGE;
+CREATE OR REPLACE TEMP TABLE VERIFY_TASK AS
+SELECT "name" AS name, "state" AS state FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()))
+WHERE "name" = 'EXTRACT_DOCUMENT_TEXT_TASK';
 
--- Check directory table is enabled
-DESC STAGE DOCUMENTS_STAGE;
-SELECT CASE 
-  WHEN (SELECT "property_value" FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "property" = 'DIRECTORY_ENABLED') = 'true' 
-  THEN '✅ PASS: Directory table is enabled'
-  ELSE '❌ FAIL: Directory table is NOT enabled (required for auto-processing)'
-END AS result;
+SHOW USERS;
+CREATE OR REPLACE TEMP TABLE VERIFY_USER AS
+SELECT * FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "name" = 'SFE_REACT_AGENT_USER';
 
--- Check encryption
-SELECT CASE 
-  WHEN (SELECT "property_value" FROM TABLE(RESULT_SCAN(LAST_QUERY_ID(-1))) WHERE "property" = 'ENCRYPTION_TYPE') = 'SNOWFLAKE_SSE' 
-  THEN '✅ PASS: Stage has server-side encryption (required for AI_PARSE_DOCUMENT)'
-  ELSE '❌ FAIL: Stage missing SNOWFLAKE_SSE encryption'
-END AS result;
-
--- =============================================================================
--- Check 4: Stream
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '4️⃣  Checking Stream...' AS test;
-SHOW STREAMS LIKE 'NEW_DOCUMENTS_STREAM';
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: Stream exists'
-  ELSE '❌ FAIL: Stream not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
-
--- =============================================================================
--- Check 5: Task
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '5️⃣  Checking Task...' AS test;
-SHOW TASKS LIKE 'EXTRACT_DOCUMENT_TEXT_TASK';
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: Task exists'
-  ELSE '❌ FAIL: Task not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
-
--- Check task state
-SELECT CASE 
-  WHEN (SELECT "state" FROM TABLE(RESULT_SCAN(LAST_QUERY_ID(-1))) WHERE "name" = 'EXTRACT_DOCUMENT_TEXT_TASK') = 'started' 
-  THEN '✅ PASS: Task is STARTED (will process new files)'
-  ELSE '⚠️  WARNING: Task is SUSPENDED (run: ALTER TASK EXTRACT_DOCUMENT_TEXT_TASK RESUME;)'
-END AS result;
-
--- =============================================================================
--- Check 6: Document Metadata Table
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '6️⃣  Checking Document Metadata Table...' AS test;
-SHOW TABLES LIKE 'DOCUMENT_METADATA';
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: Table exists'
-  ELSE '❌ FAIL: Table not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
-
--- =============================================================================
--- Check 7: Agent
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '7️⃣  Checking Cortex Agent...' AS test;
-SHOW AGENTS LIKE 'DoctorChris';
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: Agent exists'
-  ELSE '❌ FAIL: Agent not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
-
--- =============================================================================
--- Check 8: Procedures (Agent Tools)
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '8️⃣  Checking Agent Tool Procedures...' AS test;
-SHOW PROCEDURES LIKE 'ANSWER_DOCUMENT_QUESTION';
-SELECT CASE 
-  WHEN COUNT(*) >= 1 THEN '✅ PASS: ANSWER_DOCUMENT_QUESTION exists'
-  ELSE '❌ FAIL: ANSWER_DOCUMENT_QUESTION not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
-
-SHOW PROCEDURES LIKE 'TRANSLATE_DOCUMENT';
-SELECT CASE 
-  WHEN COUNT(*) >= 1 THEN '✅ PASS: TRANSLATE_DOCUMENT exists'
-  ELSE '❌ FAIL: TRANSLATE_DOCUMENT not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
-
--- =============================================================================
--- Check 9: Role
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '9️⃣  Checking Service Role...' AS test;
-SHOW ROLES LIKE 'SFE_REACT_AGENT_ROLE';
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: Role exists'
-  ELSE '❌ FAIL: Role not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
-
--- =============================================================================
--- Check 10: User (CRITICAL)
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '🔟 Checking Service User (CRITICAL)...' AS test;
-SHOW USERS LIKE 'SFE_REACT_AGENT_USER';
-SELECT CASE 
-  WHEN COUNT(*) = 1 THEN '✅ PASS: User exists'
-  ELSE '❌ FAIL: User not found'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
-
--- Check if role is granted to user
-SHOW GRANTS TO USER SFE_REACT_AGENT_USER;
-SELECT CASE 
-  WHEN COUNT(*) >= 1 THEN '✅ PASS: Role is granted to user'
-  ELSE '❌ FAIL: Role NOT granted to user (CRITICAL - backend will fail!)'
-END AS result
-FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
-
--- Check if public key is registered
 DESC USER SFE_REACT_AGENT_USER;
-SELECT CASE 
-  WHEN (SELECT "value" FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "property" = 'RSA_PUBLIC_KEY_FP') IS NOT NULL 
-  THEN '✅ PASS: RSA public key is registered'
-  ELSE '❌ FAIL: RSA public key NOT registered (CRITICAL - JWT auth will fail!)'
-END AS result;
-
--- =============================================================================
--- Check 11: Role Grants
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '1️⃣1️⃣  Checking Role Permissions...' AS test;
-SHOW GRANTS TO ROLE SFE_REACT_AGENT_ROLE;
-SELECT COUNT(*) AS grant_count, 
-  CASE 
-    WHEN COUNT(*) >= 8 THEN '✅ PASS: Role has multiple grants'
-    ELSE '⚠️  WARNING: Role may be missing some grants (expected 8+)'
-  END AS result
+CREATE OR REPLACE TEMP TABLE VERIFY_USER_DESC AS
+SELECT "property" AS property, "value" AS value
 FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
 
--- =============================================================================
--- Check 12: Test Directory Table Query
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '1️⃣2️⃣  Testing Directory Table Access...' AS test;
-SELECT COUNT(*) AS file_count FROM DIRECTORY(@DOCUMENTS_STAGE);
-SELECT '✅ PASS: Directory table is queryable' AS result;
-SELECT '   Current file count: ' || (SELECT COUNT(*) FROM DIRECTORY(@DOCUMENTS_STAGE)) AS info;
+SHOW GRANTS TO USER SFE_REACT_AGENT_USER;
+CREATE OR REPLACE TEMP TABLE VERIFY_USER_GRANTS AS
+SELECT "granted_on"   AS GRANTED_ON,
+       "name"         AS NAME,
+       "privilege"    AS PRIVILEGE,
+       "grantee_name" AS GRANTEE_NAME
+FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
 
--- =============================================================================
--- SUMMARY
--- =============================================================================
-SELECT '' AS spacer;
-SELECT '═══════════════════════════════════════════════════════════' AS divider;
-SELECT '📊 VERIFICATION SUMMARY' AS title;
-SELECT '═══════════════════════════════════════════════════════════' AS divider;
-SELECT '' AS spacer;
-SELECT 'Review the results above. All checks should show ✅ PASS.' AS guidance;
-SELECT '' AS spacer;
-SELECT 'Common Issues:' AS guidance;
-SELECT '  ❌ "Role NOT granted to user" → Run: GRANT ROLE SFE_REACT_AGENT_ROLE TO USER SFE_REACT_AGENT_USER;' AS guidance;
-SELECT '  ❌ "RSA public key NOT registered" → Follow NEXT STEPS in setup_snowflake.sql' AS guidance;
-SELECT '  ⚠️  "Task is SUSPENDED" → Run: ALTER TASK EXTRACT_DOCUMENT_TEXT_TASK RESUME;' AS guidance;
-SELECT '' AS spacer;
-SELECT 'If all checks pass, you are ready to start the application!' AS guidance;
-SELECT '  Run: ./tools/02_start.sh (macOS/Linux) or tools\\02_start.bat (Windows)' AS guidance;
-SELECT '' AS spacer;
-SELECT '═══════════════════════════════════════════════════════════' AS divider;
+SHOW ROLES;
+CREATE OR REPLACE TEMP TABLE VERIFY_ROLE AS
+SELECT * FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "name" = 'SFE_REACT_AGENT_ROLE';
 
+SHOW GRANTS TO ROLE SFE_REACT_AGENT_ROLE;
+CREATE OR REPLACE TEMP TABLE VERIFY_ROLE_GRANTS AS
+SELECT "granted_on" AS GRANTED_ON,
+       "name"       AS NAME,
+       "privilege"  AS PRIVILEGE
+FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+
+SHOW TABLES IN SCHEMA REACT_AGENT_STAGE;
+CREATE OR REPLACE TEMP TABLE VERIFY_TABLE AS
+SELECT * FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "name" = 'DOCUMENT_METADATA';
+
+SHOW AGENTS IN SCHEMA REACT_AGENT_STAGE;
+CREATE OR REPLACE TEMP TABLE VERIFY_AGENT AS
+SELECT * FROM TABLE(RESULT_SCAN(LAST_QUERY_ID())) WHERE "name" = 'DOCTORCHRIS';
+
+-- Collate PASS/FAIL results ---------------------------------------------------
+WITH results AS (
+  SELECT 'Warehouse exists' AS check_name,
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_WH)
+              THEN '✅ PASS' ELSE '❌ FAIL' END AS status,
+         'SHOW WAREHOUSES' AS detail
+  UNION ALL
+  SELECT 'Database exists',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_DB)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW DATABASES' AS detail
+  UNION ALL
+  SELECT 'Schema exists',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_SCHEMA)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW SCHEMAS IN DATABASE ...' AS detail
+  UNION ALL
+  SELECT 'Stage exists',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_STAGE)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW STAGES IN SCHEMA ...' AS detail
+  UNION ALL
+  SELECT 'Stage directory enabled',
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM VERIFY_STAGE_INFO
+           WHERE UPPER(CAST(DIRECTORY_ENABLED AS STRING)) = 'TRUE'
+         )
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'DESCRIBE STAGE DOCUMENTS_STAGE' AS detail
+  UNION ALL
+  SELECT 'Stage is internal (Snowflake-managed SSE)',
+         CASE WHEN EXISTS (
+           SELECT 1
+           FROM VERIFY_STAGE_INFO
+           WHERE COALESCE(STAGE_URL, '') = ''
+         )
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW STAGES LIKE ''DOCUMENTS_STAGE''' AS detail
+  UNION ALL
+  SELECT 'Stream exists',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_STREAM)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW STREAMS IN SCHEMA ...' AS detail
+  UNION ALL
+  SELECT 'Task exists',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_TASK)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW TASKS IN SCHEMA ...' AS detail
+  UNION ALL
+  SELECT 'Task state = STARTED',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_TASK WHERE state = 'started')
+              THEN '✅ PASS' ELSE '⚠️ WARN' END,
+         'Run ALTER TASK EXTRACT_DOCUMENT_TEXT_TASK RESUME; if WARN' AS detail
+  UNION ALL
+  SELECT 'Processing procedure exists',
+         CASE WHEN EXISTS (
+           SELECT 1 FROM INFORMATION_SCHEMA.PROCEDURES
+           WHERE PROCEDURE_NAME = 'PROCESS_NEW_DOCUMENTS'
+             AND PROCEDURE_SCHEMA = 'REACT_AGENT_STAGE'
+         )
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'INFORMATION_SCHEMA.PROCEDURES' AS detail
+  UNION ALL
+  SELECT 'Document metadata table exists',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_TABLE)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW TABLES IN SCHEMA ...' AS detail
+  UNION ALL
+  SELECT 'Agent exists',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_AGENT)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW AGENTS IN SCHEMA ...' AS detail
+  UNION ALL
+  SELECT 'Service role exists',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_ROLE)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW ROLES' AS detail
+  UNION ALL
+  SELECT 'Service user exists',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_USER)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'SHOW USERS' AS detail
+  UNION ALL
+  SELECT 'Role granted to user',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_USER_GRANTS WHERE GRANTED_ON = 'ROLE' AND NAME = 'SFE_REACT_AGENT_ROLE')
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'GRANT ROLE SFE_REACT_AGENT_ROLE TO USER SFE_REACT_AGENT_USER;' AS detail
+  UNION ALL
+  SELECT 'RSA public key registered',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_USER_DESC WHERE property = 'RSA_PUBLIC_KEY_FP' AND value IS NOT NULL)
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'ALTER USER SFE_REACT_AGENT_USER SET RSA_PUBLIC_KEY = ...' AS detail
+  UNION ALL
+  SELECT 'EXECUTE TASK granted to role',
+         CASE WHEN EXISTS (SELECT 1 FROM VERIFY_ROLE_GRANTS WHERE PRIVILEGE = 'EXECUTE TASK')
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'GRANT EXECUTE TASK ON ACCOUNT TO ROLE SFE_REACT_AGENT_ROLE;' AS detail
+  UNION ALL
+  SELECT 'Stage READ/WRITE granted to role',
+         CASE WHEN EXISTS (
+           SELECT 1 FROM VERIFY_ROLE_GRANTS
+           WHERE PRIVILEGE IN ('READ','WRITE')
+             AND GRANTED_ON = 'STAGE'
+             AND NAME LIKE '%DOCUMENTS_STAGE%'
+         )
+              THEN '✅ PASS' ELSE '❌ FAIL' END,
+         'GRANT READ, WRITE ON STAGE ... TO ROLE ...' AS detail
+  UNION ALL
+  SELECT 'Process procedure granted to role',
+         CASE WHEN EXISTS (
+           SELECT 1 FROM VERIFY_ROLE_GRANTS
+           WHERE PRIVILEGE = 'USAGE'
+             AND GRANTED_ON = 'PROCEDURE'
+             AND NAME ILIKE '%PROCESS_NEW_DOCUMENTS%'
+         )
+              THEN '✅ PASS' ELSE '⚠️ WARN' END,
+         'GRANT USAGE ON PROCEDURE ...PROCESS_NEW_DOCUMENTS() TO ROLE ...' AS detail
+)
+SELECT check_name, status, detail
+FROM results
+ORDER BY check_name;
+
+-- Diagnostics -----------------------------------------------------------------
+SELECT 'Document count' AS metric, COUNT(*)::STRING AS value
+FROM DOCUMENT_METADATA
+UNION ALL
+SELECT 'Stream has data', SYSTEM$STREAM_HAS_DATA('NEW_DOCUMENTS_STREAM')::STRING;
+
+SELECT FILE_NAME,
+       EXTRACTION_TIMESTAMP,
+       LEFT(EXTRACTED_TEXT, 120) AS preview
+FROM DOCUMENT_METADATA
+ORDER BY EXTRACTION_TIMESTAMP DESC
+LIMIT 5;

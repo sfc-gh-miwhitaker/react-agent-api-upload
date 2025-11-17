@@ -64,28 +64,24 @@ DESC USER SFE_REACT_AGENT_USER;
 
 ---
 
-### 3. Wrong Cortex Function (AI_PARSE_DOCUMENT vs PARSE_DOCUMENT)
+### 3. Picking the Right PARSE_DOCUMENT Variant
 
 **Issue:**  
-Code referenced multiple versions of the document parsing function inconsistently
+Code referenced multiple versions of the document parsing function inconsistently.
 
 **Root Cause:**  
-Snowflake documentation shows `AI_PARSE_DOCUMENT` is the latest version:
-> "AI_PARSE_DOCUMENT is the updated version of PARSE_DOCUMENT (SNOWFLAKE.CORTEX). For the latest functionality, use AI_PARSE_DOCUMENT."
+Snowflake has two flavours: the original `SNOWFLAKE.CORTEX.PARSE_DOCUMENT` and the newer `AI_PARSE_DOCUMENT`. Our account only exposes the Cortex version, so attempts to call the newer function failed with “expected 2 arguments, got 3”.
 
 **Solution:**
 ```sql
--- ❌ OLD (still works but deprecated)
-SNOWFLAKE.CORTEX.PARSE_DOCUMENT('@stage', 'file.pdf', {'mode': 'LAYOUT'})
-
--- ✅ NEW (recommended)
-AI_PARSE_DOCUMENT('@stage', 'file.pdf', {'mode': 'LAYOUT'})
+-- ✅ Compatible across accounts
+SNOWFLAKE.CORTEX.PARSE_DOCUMENT('@stage', 'file.pdf', {'mode': 'LAYOUT'}):content::STRING
 ```
 
 **Prevention:**
-- Always use `AI_PARSE_DOCUMENT` in new code
-- Update all documentation and comments to reference latest function
-- Add note about deprecation timeline when Snowflake announces it
+- Standardise on `SNOWFLAKE.CORTEX.PARSE_DOCUMENT` unless you’ve confirmed `AI_PARSE_DOCUMENT` is available.
+- Wrap the logic so you can fall back gracefully if only one variant exists.
+- Update comments and docs to note which variant the project uses.
 
 ---
 
@@ -317,8 +313,8 @@ SELECT COUNT(*) FROM DIRECTORY(@DOCUMENTS_STAGE);
 
 ### 4. Test Components Individually
 ```sql
--- Test AI_PARSE_DOCUMENT directly
-SELECT AI_PARSE_DOCUMENT('@DOCUMENTS_STAGE', 'test.pdf', {'mode': 'LAYOUT'});
+-- Test SNOWFLAKE.CORTEX.PARSE_DOCUMENT directly
+SELECT SNOWFLAKE.CORTEX.PARSE_DOCUMENT('@DOCUMENTS_STAGE', 'test.pdf', {'mode': 'LAYOUT'}):content::STRING;
 
 -- Test agent tool directly
 CALL ANSWER_DOCUMENT_QUESTION('How many documents do I have?');
@@ -334,7 +330,7 @@ CALL ANSWER_DOCUMENT_QUESTION('How many documents do I have?');
    - Changed `SECURITYADMIN` → `ACCOUNTADMIN`
    - Added critical comment about role grant
    - Added comprehensive verification section
-   - Updated to use `AI_PARSE_DOCUMENT`
+   - Standardised on `SNOWFLAKE.CORTEX.PARSE_DOCUMENT`
    - Fixed task to use `MERGE` instead of `INSERT ... ON CONFLICT`
    - Added troubleshooting guide
 
@@ -344,7 +340,7 @@ CALL ANSWER_DOCUMENT_QUESTION('How many documents do I have?');
 
 3. **`server/src/snowflakeClient.js`**
    - Added missing `export` keywords
-   - Updated to use `AI_PARSE_DOCUMENT`
+   - Standardised on `SNOWFLAKE.CORTEX.PARSE_DOCUMENT`
    - Added `listFilesFromStage()` function
    - Added `parseDocumentFromStage()` function with proper export
 
@@ -384,7 +380,7 @@ CALL ANSWER_DOCUMENT_QUESTION('How many documents do I have?');
 
 ## References
 
-- [Snowflake AI_PARSE_DOCUMENT Documentation](https://docs.snowflake.com/en/sql-reference/functions/ai_parse_document)
+- [Snowflake PARSE_DOCUMENT Documentation](https://docs.snowflake.com/en/sql-reference/functions/parse_document)
 - [Directory Tables](https://docs.snowflake.com/en/user-guide/data-load-dirtables)
 - [Streams and Tasks](https://docs.snowflake.com/en/user-guide/streams-intro)
 - [Key-Pair Authentication](https://docs.snowflake.com/en/user-guide/key-pair-auth)
