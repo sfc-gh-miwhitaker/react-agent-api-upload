@@ -6,7 +6,7 @@ This script:
 1. Generates RSA key pair (or uses existing)
 2. Outputs SQL to assign public key to Snowflake user
 3. Updates Node.js client code to support key-pair auth
-4. Updates .env file with new settings
+4. Creates .secrets/.env file with new settings
 
 Usage:
     python tools/01_setup_keypair_auth.py [--account ACCOUNT] [--user USERNAME]
@@ -15,11 +15,29 @@ Usage:
 import argparse
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Dict
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 import base64
+
+
+def read_env_file(path: Path) -> Dict[str, str]:
+    """Parse simple KEY=VALUE pairs from an env file."""
+    values: Dict[str, str] = {}
+    if not path.exists():
+        return values
+
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip()
+    return values
 
 
 def main():
@@ -33,24 +51,25 @@ def main():
     project_root = Path(__file__).parent.parent
     os.chdir(project_root)
 
-    print("🔐 Snowflake Key-Pair Authentication Setup")
+    print("Key-Pair Authentication Setup")
     print("=" * 60)
     print()
 
-    # Step 1: Generate or verify keys
-    key_dir = Path("config/keys")
+    # Step 1: Generate or verify keys in .secrets/keys/
+    secrets_dir = Path(".secrets")
+    key_dir = secrets_dir / "keys"
     key_dir.mkdir(parents=True, exist_ok=True)
     
     private_key_path = key_dir / "rsa_key.p8"
     public_key_path = key_dir / "rsa_key.pub"
 
     if private_key_path.exists() and not args.force:
-        print(f"✅ Using existing keys in {key_dir}/")
+        print(f"Using existing keys in {key_dir}/")
         print()
         with open(public_key_path, "rb") as f:
             public_key_pem = f.read()
     else:
-        print(f"🔑 Generating new RSA key pair in {key_dir}/")
+        print(f"Generating new RSA key pair in {key_dir}/")
         
         # Generate private key
         private_key = rsa.generate_private_key(
@@ -83,7 +102,7 @@ def main():
         print()
 
     # Step 2: Extract public key in Snowflake format
-    print("📤 Extracting public key for Snowflake...")
+    print("Extracting public key for Snowflake...")
     
     # Read the public key and convert to DER format
     with open(public_key_path, "rb") as f:
@@ -97,12 +116,12 @@ def main():
     
     # Base64 encode without newlines
     public_key_b64 = base64.b64encode(public_key_der).decode('utf-8')
-    print("   ✅ Public key extracted")
+    print("   Public key extracted")
     print()
 
     # Step 3: Output SQL command
     print("=" * 60)
-    print("📋 NEXT STEP: Run this SQL in Snowsight")
+    print("NEXT STEP: Run this SQL in Snowsight")
     print("=" * 60)
     print()
     print("-- Use SECURITYADMIN or higher role")
@@ -120,73 +139,98 @@ def main():
     print()
 
     # Step 4: Update Node.js client
-    print("🔧 Updating Node.js client to support key-pair auth...")
+    print("Updating Node.js client to support key-pair auth...")
     update_nodejs_client()
-    print("   ✅ Updated server/src/snowflakeClient.js")
+    print("   Updated server/src/snowflakeClient.js")
     print()
 
-    # Step 5: Create .env file automatically
-    env_file = Path("config") / ".env"
-    env_example = Path("config") / ".env.example"
+    # Step 5: Create .secrets/.env file automatically
+    env_file = secrets_dir / ".env"
     
-    print("📝 Creating .env file...")
-    
-    # Create config directory if it doesn't exist
-    env_file.parent.mkdir(parents=True, exist_ok=True)
+    print("Creating .secrets/.env file...")
     
     # Determine account value
     account_value = args.account if args.account else "YOUR_ACCOUNT_IDENTIFIER"
     
-    # Create .env content
+    existing_env_values = read_env_file(env_file)
+
+    # Determine account value with precedence: CLI arg > existing value > placeholder
+    account_value = (
+        args.account
+        or existing_env_values.get("SNOWFLAKE_ACCOUNT")
+        or "YOUR_ACCOUNT_IDENTIFIER"
+    )
+
+    # Preserve existing optional settings when present
+    role_value = existing_env_values.get("SNOWFLAKE_ROLE", "SFE_REACT_AGENT_ROLE")
+    warehouse_value = existing_env_values.get(
+        "SNOWFLAKE_WAREHOUSE", "SFE_REACT_AGENT_WH"
+    )
+    database_value = existing_env_values.get(
+        "SNOWFLAKE_DATABASE", "SNOWFLAKE_EXAMPLE"
+    )
+    schema_value = existing_env_values.get("SNOWFLAKE_SCHEMA", "REACT_AGENT_STAGE")
+    agent_name_value = existing_env_values.get("SNOWFLAKE_AGENT_NAME", "DoctorChris")
+    stage_value = existing_env_values.get("SNOWFLAKE_STAGE", "SFE_DOCUMENTS_STAGE")
+    port_value = existing_env_values.get("PORT", "4000")
+    node_env_value = existing_env_values.get("NODE_ENV", "development")
+    log_level_value = existing_env_values.get("LOG_LEVEL", "info")
+    auth_type_value = existing_env_values.get("SNOWFLAKE_AUTH_TYPE", "keypair")
+
+    private_key_env_path = existing_env_values.get(
+        "SNOWFLAKE_PRIVATE_KEY_PATH", str(project_root / private_key_path)
+    )
+
     env_content = f"""# ==============================================================================
 # Snowflake Cortex Agent Chat Application - Environment Configuration
 # ==============================================================================
 # 
-# AUTO-GENERATED by tools/01_setup_keypair_auth.sh
-# Date: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+# AUTO-GENERATED by tools/01_setup_keypair_auth.py
+# Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 #
 # This file contains your Snowflake credentials.
 # NEVER commit this file to version control!
+# Location: .secrets/.env (covered by .git/info/exclude)
 #
 # ==============================================================================
 
 # ==============================================================================
-# Key-Pair Authentication (Configured)
+# Key-Pair Authentication
 # ==============================================================================
 
-SNOWFLAKE_AUTH_TYPE=keypair
+SNOWFLAKE_AUTH_TYPE={auth_type_value}
 SNOWFLAKE_USER={args.user}
-SNOWFLAKE_PRIVATE_KEY_PATH={project_root / private_key_path}
+SNOWFLAKE_PRIVATE_KEY_PATH={private_key_env_path}
 
 # ==============================================================================
 # Snowflake Account Configuration
 # ==============================================================================
 
 SNOWFLAKE_ACCOUNT={account_value}
-SNOWFLAKE_ROLE=SFE_REACT_AGENT_ROLE
-SNOWFLAKE_WAREHOUSE=SFE_REACT_AGENT_WH
-SNOWFLAKE_DATABASE=SNOWFLAKE_EXAMPLE
-SNOWFLAKE_SCHEMA=REACT_AGENT_STAGE
+SNOWFLAKE_ROLE={role_value}
+SNOWFLAKE_WAREHOUSE={warehouse_value}
+SNOWFLAKE_DATABASE={database_value}
+SNOWFLAKE_SCHEMA={schema_value}
 
 # ==============================================================================
 # Cortex Agent Configuration
 # ==============================================================================
 
-SNOWFLAKE_AGENT_NAME=DoctorChris
-SNOWFLAKE_STAGE=DOCUMENTS_STAGE
+SNOWFLAKE_AGENT_NAME={agent_name_value}
+SNOWFLAKE_STAGE={stage_value}
 
 # ==============================================================================
 # Server Configuration
 # ==============================================================================
 
-PORT=3001
-NODE_ENV=development
+PORT={port_value}
+NODE_ENV={node_env_value}
 
 # ==============================================================================
 # Optional: Logging
 # ==============================================================================
 
-LOG_LEVEL=info
+LOG_LEVEL={log_level_value}
 
 # ==============================================================================
 # NOTES
@@ -194,7 +238,7 @@ LOG_LEVEL=info
 #
 # If you need to update your Snowflake account identifier:
 #   1. Edit SNOWFLAKE_ACCOUNT above
-#   2. Restart the application: ./tools/02_start.sh
+#   2. Restart the application: ./tools/mac/02_start.sh
 #
 # If you need to switch to password authentication:
 #   1. Change SNOWFLAKE_AUTH_TYPE=password
@@ -207,27 +251,31 @@ LOG_LEVEL=info
     with open(env_file, "w") as f:
         f.write(env_content)
     
-    print(f"   ✅ Created {env_file}")
+    print(f"   Created {env_file}")
     print()
     
-    if not args.account:
-        print("⚠️  IMPORTANT: Update your Snowflake account identifier")
+    if account_value == "YOUR_ACCOUNT_IDENTIFIER":
+        print("IMPORTANT: Update your Snowflake account identifier")
         print(f"   Edit {env_file}")
         print("   Change: SNOWFLAKE_ACCOUNT=YOUR_ACCOUNT_IDENTIFIER")
         print("   To your actual account (e.g., ORGNAME-ACCOUNTNAME)")
         print()
     
-    print("✅ Configuration complete!")
+    print("Configuration complete!")
     print()
 
     # Summary
-    print("✅ Setup Complete!")
+    print("Setup Complete!")
     print()
     print("Next steps:")
     print("1. Run the SQL commands above in Snowsight")
-    print("2. Update your .env file with the settings shown above")
     if args.account:
-        print(f"3. Test connection: snow connection test --account {args.account} --user {args.user} --private-key-path {private_key_path}")
+        print(f"2. Test connection: snow connection test --account {args.account} --user {args.user} --private-key-path {private_key_path}")
+    else:
+        print("2. Update SNOWFLAKE_ACCOUNT in .secrets/.env")
+    print("3. Start the application:")
+    print("   macOS/Linux: ./tools/mac/02_start.sh")
+    print("   Windows:     tools\\win\\02_start.bat")
     print()
 
 
@@ -374,4 +422,3 @@ export async function summarizeText(content, { prompt } = {}) {
 
 if __name__ == "__main__":
     main()
-

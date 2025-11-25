@@ -6,7 +6,7 @@ REM   Cleanly stops all demo services (backend API and frontend UI).
 REM   Safe to run multiple times.
 REM
 REM   Usage:
-REM     tools\04_stop.bat
+REM     tools\win\04_stop.bat
 REM ============================================================================
 
 setlocal
@@ -25,7 +25,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%BACKEND_PORT% " ^| findstr
     echo Stopping Backend (PID: %%a)...
     taskkill /F /PID %%a >nul 2>&1
     if !errorlevel! equ 0 (
-        echo ✅ Stopped Backend (PID: %%a)
+        echo Stopped Backend (PID: %%a)
         set STOPPED_ANY=1
     )
 )
@@ -35,7 +35,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%FRONTEND_PORT% " ^| findst
     echo Stopping Frontend (PID: %%a)...
     taskkill /F /PID %%a >nul 2>&1
     if !errorlevel! equ 0 (
-        echo ✅ Stopped Frontend (PID: %%a)
+        echo Stopped Frontend (PID: %%a)
         set STOPPED_ANY=1
     )
 )
@@ -45,9 +45,9 @@ taskkill /F /FI "WINDOWTITLE eq Administrator:*react-agent*" >nul 2>&1
 
 echo.
 if %STOPPED_ANY% equ 1 (
-    echo ✅ All services stopped
+    echo All services stopped
 ) else (
-    echo ℹ️  No services were running
+    echo No services were running
 )
 echo.
 echo ================================================================================

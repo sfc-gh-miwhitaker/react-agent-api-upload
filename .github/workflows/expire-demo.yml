@@ -1,0 +1,103 @@
+# Demo Repository Expiration Workflow
+# 
+# This workflow automatically archives and makes the repository private
+# after the demo expiration date to prevent discovery of outdated code.
+#
+# Author: SE Community
+# Expiration Date: 2025-12-25
+
+name: Demo Expiration Check
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allow manual triggering for testing
+
+env:
+  EXPIRATION_DATE: '2025-12-25'
+
+jobs:
+  check-expiration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Check if demo has expired
+        id: check
+        run: |
+          CURRENT_DATE=$(date +%Y-%m-%d)
+          EXPIRATION="${{ env.EXPIRATION_DATE }}"
+          
+          echo "Current date: $CURRENT_DATE"
+          echo "Expiration date: $EXPIRATION"
+          
+          if [[ "$CURRENT_DATE" > "$EXPIRATION" ]] || [[ "$CURRENT_DATE" == "$EXPIRATION" ]]; then
+            echo "expired=true" >> $GITHUB_OUTPUT
+            echo "::warning::Demo has expired! Taking action..."
+          else
+            echo "expired=false" >> $GITHUB_OUTPUT
+            echo "Demo is still active"
+          fi
+          
+      - name: Checkout repository
+        if: steps.check.outputs.expired == 'true'
+        uses: actions/checkout@v4
+        
+      - name: Archive repository
+        if: steps.check.outputs.expired == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            console.log(`Archiving repository: ${owner}/${repo}`);
+            
+            try {
+              // Update repository to archived and private
+              await github.rest.repos.update({
+                owner: owner,
+                repo: repo,
+                archived: true,
+                private: true,
+                description: `[EXPIRED] ${context.payload.repository.description || 'Demo project - expired on ${{ env.EXPIRATION_DATE }}'}`
+              });
+              
+              console.log('Repository successfully archived and made private');
+              
+              // Create an issue documenting the expiration
+              await github.rest.issues.create({
+                owner: owner,
+                repo: repo,
+                title: 'Demo Expired - Repository Archived',
+                body: `## Demo Expiration Notice\n\nThis demo repository was automatically archived on ${new Date().toISOString().split('T')[0]}.\n\n**Original Expiration Date:** ${{ env.EXPIRATION_DATE }}\n\n### Why?\n\nDemo projects are designed for short-term use (30 days). After expiration:\n- Snowflake syntax may have changed\n- Best practices may have evolved\n- Dependencies may be outdated\n\n### Need this demo again?\n\nContact SE Community to request an updated version.\n\n### To reactivate (admin only):\n\n1. Unarchive the repository\n2. Update all code to current standards\n3. Set new expiration date in:\n   - README.md\n   - .github/workflows/expire-demo.yml\n   - sql/setup_snowflake.sql\n4. Make repository public again`,
+                labels: ['expired', 'automated']
+              });
+              
+            } catch (error) {
+              // If we don't have permission to archive (org settings), just create the issue
+              console.log(`Could not archive repository: ${error.message}`);
+              console.log('Creating expiration notice issue instead...');
+              
+              await github.rest.issues.create({
+                owner: owner,
+                repo: repo,
+                title: 'Demo Expired - Manual Archive Required',
+                body: `## Demo Expiration Notice\n\nThis demo repository has expired as of ${{ env.EXPIRATION_DATE }}.\n\n**Action Required:** A repository administrator should:\n1. Archive this repository\n2. Make it private\n\nThis prevents discovery of potentially outdated code.`,
+                labels: ['expired', 'action-required']
+              });
+            }
+
+      - name: Log result
+        run: |
+          if [[ "${{ steps.check.outputs.expired }}" == "true" ]]; then
+            echo "::notice::Repository expiration workflow completed"
+          else
+            DAYS_LEFT=$(( ($(date -d "${{ env.EXPIRATION_DATE }}" +%s) - $(date +%s)) / 86400 ))
+            echo "::notice::Demo is active. $DAYS_LEFT days until expiration."
+          fi
+

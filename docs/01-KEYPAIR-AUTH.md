@@ -1,6 +1,6 @@
 # Key-Pair Authentication Setup
 
-⚠️ **This guide has been superseded by an automated workflow.**
+This guide has been superseded by an automated workflow.
 
 ## Quick Setup (Recommended)
 
@@ -8,20 +8,20 @@ Run the automated setup tool:
 
 **macOS / Linux:**
 ```bash
-./tools/01_setup_keypair_auth.sh --account YOUR_ACCOUNT_ID
+./tools/mac/01_setup_keypair_auth.sh --account YOUR_ACCOUNT_ID
 ```
 
 **Windows:**
 ```cmd
-tools\01_setup_keypair_auth.bat --account YOUR_ACCOUNT_ID
+tools\win\01_setup_keypair_auth.bat --account YOUR_ACCOUNT_ID
 ```
 
 The tool will:
-1. ✅ Generate RSA keys (or use existing)
-2. ✅ Extract public key in Snowflake format
-3. ✅ Output SQL to assign key to user
-4. ✅ Automatically update Node.js client code
-5. ✅ Provide .env configuration guidance
+1. Generate RSA keys (or use existing)
+2. Extract public key in Snowflake format
+3. Output SQL to assign key to user
+4. Automatically update Node.js client code
+5. Create `.secrets/.env` with all configuration
 
 **Total time:** ~2 minutes
 
@@ -32,7 +32,7 @@ The tool will:
 The automated tool replaces these manual steps:
 
 ### 1. Generate Keys
-Creates a 2048-bit RSA key pair in `config/keys/`:
+Creates a 2048-bit RSA key pair in `.secrets/keys/`:
 - `rsa_key.p8` - Private key (PKCS#8 format, unencrypted)
 - `rsa_key.pub` - Public key (PEM format)
 
@@ -51,11 +51,11 @@ Automatically updates `server/src/snowflakeClient.js` to support both authentica
 - Key-pair authentication (when `SNOWFLAKE_AUTH_TYPE=keypair`)
 
 ### 4. Configure Environment
-Shows you exactly what to add to your `.env` file:
+Creates `.secrets/.env` with all required settings:
 
 ```bash
 SNOWFLAKE_AUTH_TYPE=keypair
-SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/config/keys/rsa_key.p8
+SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/.secrets/keys/rsa_key.p8
 SNOWFLAKE_USER=SFE_REACT_AGENT_USER
 # SNOWFLAKE_PASSWORD not needed when using keypair
 ```
@@ -83,23 +83,23 @@ Look for:
 snow connection test \
   --account YOUR_ACCOUNT_ID \
   --user SFE_REACT_AGENT_USER \
-  --private-key-path config/keys/rsa_key.p8
+  --private-key-path .secrets/keys/rsa_key.p8
 ```
 
 ### With Application
-1. Update `.env` with settings from tool output
-2. Start server: `./tools/02_start.sh` (or `.bat` on Windows)
-3. Check status: `./tools/03_status.sh` (or `.bat` on Windows)
+1. Verify `.secrets/.env` was created by the tool
+2. Start server: `./tools/mac/02_start.sh` (or `tools\win\02_start.bat` on Windows)
+3. Check status: `./tools/mac/03_status.sh` (or `tools\win\03_status.bat` on Windows)
 4. Verify connection in console logs
 
 ---
 
 ## Security Notes
 
-- 🔒 Keys saved to `config/keys/` (in `.gitignore`)
-- 🔒 Private key generated without passphrase for ease of automation
-- 🔒 Service user has minimal privileges (follows least privilege principle)
-- ⚠️ For production: Use external secret management (AWS KMS, Azure Key Vault, etc.)
+- Keys saved to `.secrets/keys/` (excluded via `.git/info/exclude`)
+- Private key generated without passphrase for ease of automation
+- Service user has minimal privileges (follows least privilege principle)
+- For production: Use external secret management (AWS KMS, Azure Key Vault, etc.)
 
 ---
 
@@ -111,14 +111,14 @@ snow connection test \
 
 ### Error: "Private key not found"
 **Cause:** Keys not generated yet  
-**Fix:** Run `./tools/01_setup_keypair_auth.sh` first
+**Fix:** Run `./tools/mac/01_setup_keypair_auth.sh` first
 
 ### Error: "Missing environment variable: SNOWFLAKE_PRIVATE_KEY_PATH"
-**Cause:** .env not configured for key-pair auth  
-**Fix:** Add `SNOWFLAKE_AUTH_TYPE=keypair` and `SNOWFLAKE_PRIVATE_KEY_PATH` to `.env`
+**Cause:** .secrets/.env not configured for key-pair auth  
+**Fix:** Re-run the setup tool or manually add `SNOWFLAKE_AUTH_TYPE=keypair` and `SNOWFLAKE_PRIVATE_KEY_PATH` to `.secrets/.env`
 
 ### Want to switch back to password auth?
-Simply remove or comment out `SNOWFLAKE_AUTH_TYPE` in your `.env` file. The code defaults to password authentication.
+Simply change `SNOWFLAKE_AUTH_TYPE=password` in your `.secrets/.env` file and add `SNOWFLAKE_PASSWORD`. The code defaults to password authentication.
 
 ---
 
@@ -128,13 +128,14 @@ If you need to manually generate keys (e.g., with encryption, custom paths):
 
 ### Generate Private Key
 ```bash
-openssl genrsa 2048 | openssl pkcs8 -topk8 -v2 aes256 -out config/keys/custom_key.p8
+mkdir -p .secrets/keys
+openssl genrsa 2048 | openssl pkcs8 -topk8 -v2 aes256 -out .secrets/keys/custom_key.p8
 ```
 
 ### Extract Public Key
 ```bash
-openssl rsa -pubin -in config/keys/custom_key.p8 -outform DER \
-  | openssl base64 -A > config/keys/custom_key.pub.b64
+openssl rsa -pubin -in .secrets/keys/custom_key.p8 -outform DER \
+  | openssl base64 -A > .secrets/keys/custom_key.pub.b64
 ```
 
 ### Assign to User
@@ -143,10 +144,10 @@ ALTER USER SFE_REACT_AGENT_USER
   SET RSA_PUBLIC_KEY = '<contents of custom_key.pub.b64>';
 ```
 
-### Update .env
+### Update .secrets/.env
 ```bash
 SNOWFLAKE_AUTH_TYPE=keypair
-SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/config/keys/custom_key.p8
+SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/.secrets/keys/custom_key.p8
 ```
 
 ---

@@ -1,14 +1,15 @@
 # Auth Flow - React Agent API Upload
 
-**Author:** Michael Whitaker  
-**Last Updated:** 2025-11-12  
-**Status:** ⚠️ **DEMO/NON-PRODUCTION**
+**Author:** SE Community  
+**Last Updated:** 2025-11-25  
+**Expires:** 2025-12-25  
+**Status:** Reference Implementation
 
 ---
 
 ![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=for-the-badge&logo=snowflake&logoColor=white)
 
-⚠️ **WARNING: This is a demonstration project. NOT FOR PRODUCTION USE.**
+**Reference Implementation:** This code demonstrates production-grade architectural patterns and best practices. Review and customize security, networking, and business logic for your organization's specific requirements before deployment.
 
 ---
 
@@ -83,7 +84,7 @@ sequenceDiagram
     rect rgb(255, 245, 230)
         Note over Express,SF: Authorization Check (Every Operation)
         
-        Express->>SFSDK: PUT file to DOCUMENTS_STAGE
+        Express->>SFSDK: PUT file to SFE_DOCUMENTS_STAGE
         SFSDK->>SF: Execute PUT command
         SF->>Role: Check USAGE grant on STAGE
         Role-->>SF: Grant verified
@@ -96,7 +97,7 @@ sequenceDiagram
     rect rgb(250, 240, 255)
         Note over Express,SF: Agent Interaction (REST API)
         
-        Express->>SFAPI: POST /agents/DoctorChris:chat<br/>(Bearer token)
+        Express->>SFAPI: POST /agents/DoctorChris:run<br/>(Bearer token)
         SFAPI->>SF: Verify token
         SF->>Role: Check USAGE + MONITOR on AGENT
         Role-->>SF: Grant verified
@@ -123,12 +124,12 @@ sequenceDiagram
 - **Technology:** macOS/Linux/Windows workstation
 - **Location:** Developer's computer
 - **Dependencies:** OpenSSL for key generation
-- **Security:** Private keys in `config/keys/` (gitignored)
+- **Security:** Private keys in `.secrets/keys/` (excluded via `.git/info/exclude`)
 
 ### .env File
 - **Purpose:** Stores credentials and configuration
 - **Technology:** Environment variable file
-- **Location:** Project root (gitignored)
+- **Location:** `.secrets/.env` (excluded via `.git/info/exclude`)
 - **Dependencies:** None
 - **Security:** NEVER committed to git, local-only
 
@@ -138,6 +139,7 @@ sequenceDiagram
 - **Location:** `server/src/`
 - **Dependencies:** Snowflake credentials, network access
 - **Authentication:** Inherits from .env configuration
+- **Port:** 4000
 
 ### Snowflake SDK
 - **Purpose:** Node.js client for Snowflake connections
@@ -164,7 +166,7 @@ sequenceDiagram
   - USAGE on SFE_REACT_AGENT_WH
   - USAGE on SNOWFLAKE_EXAMPLE database
   - USAGE on REACT_AGENT_STAGE schema
-  - USAGE on DOCUMENTS_STAGE
+  - USAGE on SFE_DOCUMENTS_STAGE
   - USAGE on stored procedures
   - USAGE + MONITOR on DoctorChris agent
 
@@ -176,7 +178,6 @@ sequenceDiagram
 - **Properties:**
   - DEFAULT_ROLE: SFE_REACT_AGENT_ROLE
   - DEFAULT_WAREHOUSE: SFE_REACT_AGENT_WH
-  - DISABLE_LOGIN: TRUE (key-pair only)
   - Optional: RSA_PUBLIC_KEY assigned
 
 ### DoctorChris Agent
@@ -193,17 +194,18 @@ sequenceDiagram
 ### Method 1: Username/Password (Development)
 
 **Pros:**
-- ✅ Simple to set up
-- ✅ No key management required
-- ✅ Works immediately
+- Simple to set up
+- No key management required
+- Works immediately
 
 **Cons:**
-- ❌ Less secure (password in .env)
-- ❌ Password rotation required
-- ❌ Not recommended for production
+- Less secure (password in .env)
+- Password rotation required
+- Not recommended for production
 
 **Configuration (.env):**
 ```bash
+SNOWFLAKE_AUTH_TYPE=password
 SNOWFLAKE_USER=your_username
 SNOWFLAKE_PASSWORD=your_password
 SNOWFLAKE_ROLE=SFE_REACT_AGENT_ROLE
@@ -212,21 +214,21 @@ SNOWFLAKE_ROLE=SFE_REACT_AGENT_ROLE
 ### Method 2: RSA Key-Pair (Production)
 
 **Pros:**
-- ✅ More secure (no password)
-- ✅ JWT tokens have expiration
-- ✅ Industry best practice
-- ✅ Supports service accounts
+- More secure (no password)
+- JWT tokens have expiration
+- Industry best practice
+- Supports service accounts
 
 **Cons:**
-- ⚠️ More complex setup
-- ⚠️ Key management required
-- ⚠️ Requires OpenSSL
+- More complex setup
+- Key management required
+- Requires OpenSSL
 
-**Configuration (.env):**
+**Configuration (.secrets/.env):**
 ```bash
+SNOWFLAKE_AUTH_TYPE=keypair
 SNOWFLAKE_USER=SFE_REACT_AGENT_USER
-SNOWFLAKE_PRIVATE_KEY_PATH=config/keys/sfe_react_agent_key.p8
-SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=your_passphrase
+SNOWFLAKE_PRIVATE_KEY_PATH=.secrets/keys/rsa_key.p8
 SNOWFLAKE_ROLE=SFE_REACT_AGENT_ROLE
 ```
 
@@ -234,8 +236,7 @@ SNOWFLAKE_ROLE=SFE_REACT_AGENT_ROLE
 1. Generate RSA key pair (2048-bit)
 2. Export public key as Base64
 3. Assign public key to Snowflake user
-4. Store private key in `config/keys/` (gitignored)
-5. Configure passphrase in .env
+4. Store private key in `.secrets/keys/` (excluded via `.git/info/exclude`)
 
 **See:** `docs/01-KEYPAIR-AUTH.md` for detailed instructions
 
@@ -251,11 +252,11 @@ ACCOUNTADMIN (setup only)
        ├─> Creates: SFE_REACT_AGENT_WH
        ├─> Creates: SNOWFLAKE_EXAMPLE database
        ├─> Creates: REACT_AGENT_STAGE schema
-       ├─> Creates: DOCUMENTS_STAGE
+       ├─> Creates: SFE_DOCUMENTS_STAGE
        ├─> Creates: Stored procedures
        └─> Creates: DoctorChris agent
 
-SECURITYADMIN (manages users/roles)
+ACCOUNTADMIN (manages users/roles)
   ├─> Creates: SFE_REACT_AGENT_ROLE
   ├─> Creates: SFE_REACT_AGENT_USER
   └─> Grants: ROLE to USER
@@ -276,9 +277,9 @@ SFE_REACT_AGENT_ROLE (application role)
 | Warehouse | SFE_REACT_AGENT_WH | USAGE | Execute queries |
 | Database | SNOWFLAKE_EXAMPLE | USAGE | Access database |
 | Schema | REACT_AGENT_STAGE | USAGE | Access schema |
-| Stage | DOCUMENTS_STAGE | USAGE | Upload/read files |
-| Procedure | EXTRACT_STRUCTURED_INSIGHTS_SP | USAGE | Execute tool |
-| Procedure | TRANSLATE_DOCUMENT_SP | USAGE | Execute tool |
+| Stage | SFE_DOCUMENTS_STAGE | USAGE | Upload/read files |
+| Procedure | ANSWER_DOCUMENT_QUESTION | USAGE | Execute tool |
+| Procedure | TRANSLATE_DOCUMENT | USAGE | Execute tool |
 | Agent | DoctorChris | USAGE | Chat with agent |
 | Agent | DoctorChris | MONITOR | View agent status |
 
@@ -287,28 +288,27 @@ SFE_REACT_AGENT_ROLE (application role)
 ## Security Best Practices
 
 ### Credential Management
-- ✅ Store credentials in .env (gitignored)
-- ✅ Use key-pair auth for production
-- ✅ Rotate keys/passwords regularly
-- ✅ Never commit secrets to git
-- ❌ Never hardcode credentials in code
+- Store credentials in `.secrets/.env` (excluded via `.git/info/exclude`)
+- Use key-pair auth for production
+- Rotate keys/passwords regularly
+- Never commit secrets to git
+- Never hardcode credentials in code
 
 ### Least Privilege
-- ✅ Service role has minimal grants
-- ✅ User locked to single role
-- ✅ No direct table access (only via tools)
-- ✅ DISABLE_LOGIN set for service user
+- Service role has minimal grants
+- User locked to single role
+- No direct table access (only via tools)
 
 ### Network Security
-- ✅ All connections use HTTPS/TLS
-- ✅ Snowflake enforces TLS 1.2+
-- ⚠️ Optional: Snowflake Network Policy (IP whitelist)
+- All connections use HTTPS/TLS
+- Snowflake enforces TLS 1.2+
+- Optional: Snowflake Network Policy (IP whitelist)
 
 ### Audit Trail
-- ✅ All operations logged in QUERY_HISTORY
-- ✅ User activity tracked by account
-- ✅ Agent conversations logged
-- ✅ Use ACCOUNTADMIN to review logs
+- All operations logged in QUERY_HISTORY
+- User activity tracked by account
+- Agent conversations logged
+- Use ACCOUNTADMIN to review logs
 
 ---
 
@@ -317,7 +317,7 @@ SFE_REACT_AGENT_ROLE (application role)
 ### JWT Generation
 
 ```
-1. Load private key from config/keys/
+1. Load private key from .secrets/keys/
 2. Create JWT payload:
    {
      "iss": "account_identifier",
@@ -359,4 +359,4 @@ SFE_REACT_AGENT_ROLE (application role)
 
 ## Change History
 
-See `.cursornotes/DIAGRAM_CHANGELOG.md` for version history.
+See `.cursor/DIAGRAM_CHANGELOG.md` for version history.

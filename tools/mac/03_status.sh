@@ -5,7 +5,7 @@
 #   Shows the status of all demo services (backend API and frontend UI).
 #
 #   Usage:
-#     ./tools/03_status.sh
+#     ./tools/mac/03_status.sh
 #
 #   Exit codes:
 #     0 - All expected services are running
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 PIDS_DIR="$PROJECT_ROOT/.pids"
 
 BACKEND_PORT=4000
@@ -38,18 +38,18 @@ ALL_RUNNING=true
 echo "Backend API (Port $BACKEND_PORT):"
 BACKEND_PID=$(lsof -ti :$BACKEND_PORT 2>/dev/null || echo "")
 if [ -n "$BACKEND_PID" ]; then
-    echo -e "  ${GREEN}✅ Running${NC} (PID: $BACKEND_PID)"
+    echo -e "  ${GREEN}Running${NC} (PID: $BACKEND_PID)"
     BACKEND_CMD=$(ps -p $BACKEND_PID -o command= 2>/dev/null | head -c 60)
     echo "     Process: $BACKEND_CMD..."
     
     # Health check
     if curl -s http://localhost:$BACKEND_PORT/health > /dev/null 2>&1; then
-        echo -e "  ${GREEN}✅ Health check: OK${NC}"
+        echo -e "  ${GREEN}Health check: OK${NC}"
     else
-        echo -e "  ${YELLOW}⚠️  Health check: Failed${NC}"
+        echo -e "  ${YELLOW}Health check: Failed${NC}"
     fi
 else
-    echo -e "  ${RED}❌ Stopped${NC}"
+    echo -e "  ${RED}Stopped${NC}"
     ALL_RUNNING=false
 fi
 echo ""
@@ -58,16 +58,16 @@ echo ""
 echo "Frontend UI (Port $FRONTEND_PORT):"
 FRONTEND_PID=$(lsof -ti :$FRONTEND_PORT 2>/dev/null || echo "")
 if [ -n "$FRONTEND_PID" ]; then
-    echo -e "  ${GREEN}✅ Running${NC} (PID: $FRONTEND_PID)"
+    echo -e "  ${GREEN}Running${NC} (PID: $FRONTEND_PID)"
     
     # HTTP check
     if curl -s http://localhost:$FRONTEND_PORT > /dev/null 2>&1; then
-        echo -e "  ${GREEN}✅ HTTP check: OK${NC}"
+        echo -e "  ${GREEN}HTTP check: OK${NC}"
     else
-        echo -e "  ${YELLOW}⚠️  HTTP check: Failed${NC}"
+        echo -e "  ${YELLOW}HTTP check: Failed${NC}"
     fi
 else
-    echo -e "  ${RED}❌ Stopped${NC}"
+    echo -e "  ${RED}Stopped${NC}"
     ALL_RUNNING=false
 fi
 echo ""
@@ -81,14 +81,14 @@ if [ "$ALL_RUNNING" = true ]; then
     echo "  Frontend: http://localhost:$FRONTEND_PORT"
     echo "  Backend:  http://localhost:$BACKEND_PORT"
     echo ""
-    echo -e "${GREEN}✅ All services running${NC}"
+    echo -e "${GREEN}All services running${NC}"
     echo ""
     exit 0
 else
     echo "================================================================================"
-    echo -e "${YELLOW}⚠️  Some services are not running${NC}"
+    echo -e "${YELLOW}Some services are not running${NC}"
     echo ""
-    echo "To start services: ./tools/02_start.sh"
+    echo "To start services: ./tools/mac/02_start.sh"
     echo "================================================================================"
     echo ""
     exit 1

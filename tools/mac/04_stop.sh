@@ -6,14 +6,14 @@
 #   Safe to run multiple times.
 #
 #   Usage:
-#     ./tools/04_stop.sh
+#     ./tools/mac/04_stop.sh
 #
 # ==============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 PIDS_DIR="$PROJECT_ROOT/.pids"
 
 BACKEND_PORT=4000
@@ -40,7 +40,7 @@ stop_by_pid_file() {
             if kill -0 "$pid" 2>/dev/null; then
                 kill -9 "$pid" 2>/dev/null || true
             fi
-            echo "✅ Stopped $service_name (PID: $pid)"
+            echo "Stopped $service_name (PID: $pid)"
             STOPPED_ANY=true
         fi
         rm -f "$pid_file"
@@ -60,7 +60,7 @@ stop_by_port() {
         if kill -0 "$pid" 2>/dev/null; then
             kill -9 "$pid" 2>/dev/null || true
         fi
-        echo "✅ Stopped $service_name (PID: $pid, Port: $port)"
+        echo "Stopped $service_name (PID: $pid, Port: $port)"
         STOPPED_ANY=true
     fi
 }
@@ -80,11 +80,11 @@ stop_by_port "React Dev Server" 3000
 
 # Nuclear option: Kill any node processes in this project directory
 echo ""
-echo "🔍 Checking for orphaned node processes..."
+echo "Checking for orphaned node processes..."
 ORPHANED=$(ps aux | grep "[n]ode.*react-agent-api-upload" | awk '{print $2}' || echo "")
 if [ -n "$ORPHANED" ]; then
     echo "$ORPHANED" | xargs kill -9 2>/dev/null || true
-    echo "✅ Cleaned up orphaned processes"
+    echo "Cleaned up orphaned processes"
     STOPPED_ANY=true
 fi
 
@@ -95,9 +95,9 @@ fi
 
 echo ""
 if [ "$STOPPED_ANY" = true ]; then
-    echo "✅ All services stopped"
+    echo "All services stopped"
 else
-    echo "ℹ️  No services were running"
+    echo "No services were running"
 fi
 echo ""
 echo "================================================================================"

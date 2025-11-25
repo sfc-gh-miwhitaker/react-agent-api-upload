@@ -29,6 +29,14 @@ I can help you understand, summarize, translate, and extract information from yo
   timestamp: new Date(),
 });
 
+const formatSize = (bytes = 0) => {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const value = bytes / 1024 ** i;
+  return `${value.toFixed(1)} ${units[i]}`;
+};
+
 const DocumentIntelligence = ({ config }) => {
   // Document state
   const [documents, setDocuments] = useState([]);
@@ -62,7 +70,16 @@ const DocumentIntelligence = ({ config }) => {
     setDocError('');
     try {
       const docs = await listDocuments();
-      setDocuments(docs);
+      setDocuments(
+        docs.map((doc, index) => ({
+          id: doc.id || doc.stagePath || `${doc.name || 'doc'}-${index}`,
+          name: doc.name || doc.displayName || doc.rawName || 'Unknown document',
+          stagePath: doc.stagePath || doc.path || doc.rawName,
+          rawName: doc.rawName || doc.path || null,
+          sizeHuman: doc.sizeHuman || formatSize(doc.sizeBytes || doc.size || 0),
+          lastModified: doc.lastModified || null,
+        }))
+      );
     } catch (err) {
       console.error('Error loading documents:', err);
       setDocError(err.message || 'Failed to load documents');
@@ -87,6 +104,7 @@ const DocumentIntelligence = ({ config }) => {
     setUploading(true);
     setDocError('');
     try {
+      const fileName = selectedFile.name;
       const result = await uploadDocument(selectedFile);
       console.log('Upload successful:', result);
       setSelectedFile(null);
@@ -99,7 +117,7 @@ const DocumentIntelligence = ({ config }) => {
       addMessage({
         id: Date.now(),
         role: 'assistant',
-        content: `✅ **Document uploaded successfully!**\n\nFile: ${selectedFile.name}\n\nYou can now ask me questions about this document.`,
+        content: `✅ **Document uploaded successfully!**\n\nFile: ${fileName}\n\nYou can now ask me questions about this document.`,
         timestamp: new Date(),
       });
     } catch (err) {
@@ -120,7 +138,7 @@ const DocumentIntelligence = ({ config }) => {
     });
 
     try {
-      const summary = await generateDocumentSummary(doc.name, summaryStyle);
+      const summary = await generateDocumentSummary(doc.stagePath || doc.path || doc.id, summaryStyle);
       updateMessageContent(summaryMessageId, `**Summary of ${doc.name}:**\n\n${summary}`);
     } catch (err) {
       console.error('Error generating summary:', err);
@@ -321,7 +339,7 @@ const DocumentIntelligence = ({ config }) => {
                     <span className="doc-icon">📄</span>
                     <div className="doc-details">
                       <span className="doc-name">{doc.name}</span>
-                      <span className="doc-size">{doc.size || 'Unknown size'}</span>
+                      <span className="doc-size">{doc.sizeHuman || 'Unknown size'}</span>
                     </div>
                   </div>
                   <button
