@@ -68,16 +68,16 @@ USE DATABASE SNOWFLAKE_EXAMPLE;
 USE SCHEMA TOOLS;
 
 -- =============================================================================
--- STEP 2: Git API Integration (Shared across demos)
+-- STEP 2: Git API Integration (Project-Specific)
 -- =============================================================================
--- This integration is reusable for all GitHub repositories.
--- Skip if SFE_GIT_API_INTEGRATION already exists.
+-- Creates an API integration specifically for this repository.
+-- Using CREATE OR REPLACE ensures the integration has the correct prefixes.
 
-CREATE API INTEGRATION IF NOT EXISTS SFE_GIT_API_INTEGRATION
+CREATE OR REPLACE API INTEGRATION SFE_REACT_AGENT_GIT_INTEGRATION
   API_PROVIDER = git_https_api
-  API_ALLOWED_PREFIXES = ('https://github.com/')
+  API_ALLOWED_PREFIXES = ('https://github.com/miwhitaker/react-agent-api-upload')
   ENABLED = TRUE
-  COMMENT = 'DEMO: Shared Git API integration for SE demo repositories';
+  COMMENT = 'DEMO: react-agent-api-upload - Git API integration (Expires: 2025-12-25)';
 
 -- =============================================================================
 -- STEP 3: Git Repository Clone for this Project
@@ -86,7 +86,7 @@ CREATE API INTEGRATION IF NOT EXISTS SFE_GIT_API_INTEGRATION
 -- Public repositories don't require GIT_CREDENTIALS.
 
 CREATE OR REPLACE GIT REPOSITORY SFE_REACT_AGENT_REPO
-  API_INTEGRATION = SFE_GIT_API_INTEGRATION
+  API_INTEGRATION = SFE_REACT_AGENT_GIT_INTEGRATION
   ORIGIN = 'https://github.com/miwhitaker/react-agent-api-upload.git'
   COMMENT = 'DEMO: react-agent-api-upload - Git repository for EXECUTE IMMEDIATE FROM (Expires: 2025-12-25)';
 

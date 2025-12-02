@@ -13,6 +13,8 @@
  *   - SFE_REACT_AGENT_WH (warehouse)
  *   - SFE_REACT_AGENT_USER (user)
  *   - SFE_REACT_AGENT_ROLE (role)
+ *   - SFE_REACT_AGENT_GIT_INTEGRATION (API integration)
+ *   - SFE_REACT_AGENT_REPO (Git repository clone)
  *
  *   Database-Level (in SNOWFLAKE_EXAMPLE.REACT_AGENT_STAGE):
  *   - DoctorChris (agent)
@@ -29,7 +31,7 @@
  *
  * PRESERVED:
  *   - SNOWFLAKE_EXAMPLE database (per cleanup rule)
- *   - SFE_* API integrations (per shared resource rule)
+ *   - SNOWFLAKE_EXAMPLE.TOOLS schema (shared infrastructure)
  ******************************************************************************/
 
 -- =============================================================================
@@ -85,8 +87,17 @@ USE ROLE ACCOUNTADMIN;
 DROP USER IF EXISTS SFE_REACT_AGENT_USER;
 DROP ROLE IF EXISTS SFE_REACT_AGENT_ROLE;
 
--- Note: SNOWFLAKE_EXAMPLE database retained per cleanup standards.
--- Note: Leave SFE_* API integrations in place—they are shared across demos.
+-- =============================================================================
+-- STEP 3: Remove Git integration objects (requires ACCOUNTADMIN)
+-- =============================================================================
+-- Drop Git repository clone first (depends on integration)
+DROP GIT REPOSITORY IF EXISTS SNOWFLAKE_EXAMPLE.TOOLS.SFE_REACT_AGENT_REPO;
 
--- Validation: confirm shared SFE_* integrations still exist (should return rows)
-SHOW INTEGRATIONS LIKE 'SFE_%';
+-- Drop project-specific API integration
+DROP INTEGRATION IF EXISTS SFE_REACT_AGENT_GIT_INTEGRATION;
+
+-- Note: SNOWFLAKE_EXAMPLE database retained per cleanup standards.
+-- Note: SNOWFLAKE_EXAMPLE.TOOLS schema retained for shared infrastructure.
+
+-- Validation: confirm cleanup complete
+SELECT 'Cleanup complete' AS status;
