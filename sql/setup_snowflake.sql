@@ -35,6 +35,36 @@
  *   See sql/99_cleanup/teardown_all.sql
  ******************************************************************************/
 
+-- =============================================================================
+-- EXPIRATION CHECK (MANDATORY)
+-- =============================================================================
+-- This demo expires 30 days after creation.
+-- If expired, deployment should be halted and the repository forked with updated dates.
+
+SELECT 
+    '2025-12-25'::DATE AS expiration_date,
+    CURRENT_DATE() AS current_date,
+    DATEDIFF('day', CURRENT_DATE(), '2025-12-25'::DATE) AS days_remaining,
+    CASE 
+        WHEN DATEDIFF('day', CURRENT_DATE(), '2025-12-25'::DATE) < 0 
+        THEN '🚫 EXPIRED - Do not deploy. Fork repository and update expiration date.'
+        WHEN DATEDIFF('day', CURRENT_DATE(), '2025-12-25'::DATE) <= 7
+        THEN '⚠️  EXPIRING SOON - ' || DATEDIFF('day', CURRENT_DATE(), '2025-12-25'::DATE) || ' days remaining'
+        ELSE '✅ ACTIVE - ' || DATEDIFF('day', CURRENT_DATE(), '2025-12-25'::DATE) || ' days remaining'
+    END AS demo_status;
+
+-- ⚠️  MANUAL CHECK REQUIRED:
+-- If the demo_status shows "EXPIRED", STOP HERE and do not proceed with deployment.
+-- This demo uses Snowflake features current as of November 2025.
+-- To use after expiration:
+--   1. Fork the repository
+--   2. Update expiration_date in this file
+--   3. Review/update for latest Snowflake syntax and features
+
+-- =============================================================================
+-- DEPLOY: Begin Infrastructure Setup
+-- =============================================================================
+
 USE ROLE SYSADMIN;
 
 -- =============================================================================
