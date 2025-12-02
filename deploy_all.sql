@@ -75,7 +75,7 @@ USE SCHEMA TOOLS;
 
 CREATE OR REPLACE API INTEGRATION SFE_REACT_AGENT_GIT_INTEGRATION
   API_PROVIDER = git_https_api
-  API_ALLOWED_PREFIXES = ('https://github.com/miwhitaker/react-agent-api-upload')
+  API_ALLOWED_PREFIXES = ('https://github.com/miwhitaker/react-agent-api-upload.git')
   ENABLED = TRUE
   COMMENT = 'DEMO: react-agent-api-upload - Git API integration (Expires: 2025-12-25)';
 
