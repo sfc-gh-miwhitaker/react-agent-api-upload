@@ -20,17 +20,17 @@
  *   5. Follow the NEXT STEPS section at the end for key-pair setup
  *
  * OBJECTS CREATED:
- *   See sql/setup_snowflake.sql for full object list
+ *   See sql/01_setup/01_setup_snowflake.sql for full object list
  *
  * CLEANUP:
- *   Run sql/99_cleanup/teardown_all.sql to remove all objects
+ *   Run sql/99_cleanup/01_teardown_all.sql to remove all objects
  ******************************************************************************/
 
 -- =============================================================================
 -- DEPLOY: Include setup script
 -- =============================================================================
 -- NOTE: This is a wrapper that references the main setup script.
--- For the complete, self-contained version, use sql/setup_snowflake.sql directly.
+-- For the complete, self-contained version, use sql/01_setup/01_setup_snowflake.sql directly.
 
 -- The following is the complete setup script inlined for single-execution:
 

@@ -98,7 +98,7 @@ This repository delivers a **unified document intelligence platform** built on S
 - `docs/01-KEYPAIR-AUTH.md` - Secure authentication setup
 - `diagrams/` - Architecture diagrams (data flow, network, auth)
 - `deploy_all.sql` - Single-execution Snowflake provisioning
-- `sql/99_cleanup/teardown_all.sql` - Complete cleanup script
+- `sql/99_cleanup/01_teardown_all.sql` - Complete cleanup script
 
 ## Prerequisites
 
@@ -208,7 +208,7 @@ To stop the application, press `Ctrl+C` in your terminal.
 
 When you are finished with the demo, remove all Snowflake objects:
 
-1. Open `sql/99_cleanup/teardown_all.sql` in Snowsight
+1. Open `sql/99_cleanup/01_teardown_all.sql` in Snowsight
 2. Execute the entire script
 
 This will remove:

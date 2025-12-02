@@ -32,7 +32,7 @@
  *   - DoctorChris (Cortex Agent)
  *
  * CLEANUP:
- *   See sql/99_cleanup/teardown_all.sql
+ *   See sql/99_cleanup/01_teardown_all.sql
  ******************************************************************************/
 
 -- =============================================================================
@@ -524,7 +524,7 @@ GRANT ROLE SFE_REACT_AGENT_ROLE TO USER SFE_REACT_AGENT_USER;
 -- =============================================================================
 
 -- Post-Setup Validation
--- Run `sql/verify_setup.sql` to confirm all objects are ready before starting the app.
+-- Run `sql/02_verify/01_verify_setup.sql` to confirm all objects are ready before starting the app.
 
 -- =============================================================================
 -- ✅ SETUP COMPLETE!

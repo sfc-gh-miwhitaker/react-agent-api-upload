@@ -163,13 +163,13 @@ graph TB
 ### ANSWER_DOCUMENT_QUESTION
 - **Purpose:** Agent tool that queries documents and generates structured answers
 - **Technology:** SQL Stored Procedure using CORTEX.COMPLETE
-- **Location:** `sql/setup_snowflake.sql`
+- **Location:** `sql/01_setup/01_setup_snowflake.sql`
 - **Dependencies:** SFE_DOCUMENT_METADATA table, mistral-large2 model
 
 ### TRANSLATE_DOCUMENT
 - **Purpose:** Agent tool that translates document content
 - **Technology:** SQL Stored Procedure using CORTEX.TRANSLATE
-- **Location:** `sql/setup_snowflake.sql`
+- **Location:** `sql/01_setup/01_setup_snowflake.sql`
 - **Dependencies:** SFE_DOCUMENT_METADATA table
 
 ### SFE_REACT_AGENT_WH

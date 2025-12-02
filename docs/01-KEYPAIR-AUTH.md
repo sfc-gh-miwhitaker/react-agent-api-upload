@@ -156,4 +156,4 @@ SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/.secrets/keys/custom_key.p8
 
 - **Previous guide:** `README.md` - Main project setup
 - **Architecture:** `diagrams/auth-flow.md` - Authentication flow diagram
-- **Cleanup:** `sql/99_cleanup/teardown_all.sql` - Remove all demo objects
+- **Cleanup:** `sql/99_cleanup/01_teardown_all.sql` - Remove all demo objects

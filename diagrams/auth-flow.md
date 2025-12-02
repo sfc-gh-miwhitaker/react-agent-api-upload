@@ -37,7 +37,7 @@ sequenceDiagram
     
     Note over Admin,SF: Setup Phase (One-Time)
     
-    Admin->>SF: Run sql/setup_snowflake.sql
+    Admin->>SF: Run sql/01_setup/01_setup_snowflake.sql
     SF->>Role: CREATE ROLE SFE_REACT_AGENT_ROLE
     SF->>User: CREATE USER SFE_REACT_AGENT_USER
     SF->>User: SET DEFAULT_ROLE = SFE_REACT_AGENT_ROLE
