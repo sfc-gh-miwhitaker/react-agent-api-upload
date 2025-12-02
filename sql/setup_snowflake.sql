@@ -80,7 +80,7 @@ CREATE OR REPLACE TABLE SFE_DOCUMENT_METADATA (
     FILE_SIZE INTEGER,
     LAST_MODIFIED TIMESTAMP_NTZ,
     
-    -- Extracted content using SNOWFLAKE.CORTEX.PARSE_DOCUMENT
+    -- Extracted content using AI_PARSE_DOCUMENT
     EXTRACTED_TEXT STRING,
     EXTRACTED_JSON VARIANT,          -- Reserved for future use
     PAGE_COUNT INTEGER,              -- Reserved for future use
@@ -119,7 +119,7 @@ BEGIN
         SUBSTR(RELATIVE_PATH, REGEXP_INSTR(RELATIVE_PATH, '[^/]+$')) AS FILE_NAME,
         SIZE,
         CAST(LAST_MODIFIED AS TIMESTAMP_NTZ) AS LAST_MODIFIED,
-        SNOWFLAKE.CORTEX.PARSE_DOCUMENT(
+        AI_PARSE_DOCUMENT(
           '@SFE_DOCUMENTS_STAGE',
           RELATIVE_PATH,
           {'mode': 'LAYOUT'}
@@ -263,7 +263,7 @@ BEGIN
   
   -- Use LLM to answer the question based on document content
   answer := (
-    SELECT SNOWFLAKE.CORTEX.COMPLETE(
+    SELECT AI_COMPLETE(
       'mistral-large2',
       'You are an expert analyst. Answer the following question based on the provided document excerpts.
 
@@ -313,7 +313,7 @@ BEGIN
   
   -- Use Cortex Translate
   translated_text := (
-    SELECT SNOWFLAKE.CORTEX.TRANSLATE(
+    SELECT AI_TRANSLATE(
       :doc_text,
       '',                    -- Auto-detect source language
       :target_language
@@ -537,7 +537,7 @@ GRANT ROLE SFE_REACT_AGENT_ROLE TO USER SFE_REACT_AGENT_USER;
 -- =============================================================================
 --
 -- ✅ Snowflake-Native Document Intelligence:
---    - SNOWFLAKE.CORTEX.PARSE_DOCUMENT: Extracts text from PDFs, Word, Excel, PowerPoint
+--    - AI_PARSE_DOCUMENT: Extracts text from PDFs, Word, Excel, PowerPoint
 --    - Event-Driven Architecture: Auto-processes new files within 1 minute using Directory Tables + Streams + Tasks
 --    - Cortex Search: Semantic search service (available for advanced queries)
 --    - Zero Infrastructure: Fully serverless, auto-scaling

@@ -114,14 +114,14 @@ graph TB
 ### Express Server
 - **Purpose:** Backend API server handling uploads and agent communication
 - **Technology:** Node.js, Express.js, multer, snowflake-sdk
-- **Location:** `server/src/app.js`, `server/src/routes/`
+- **Location:** `server/src/index.js`
 - **Dependencies:** Snowflake account, environment variables (.secrets/.env)
 - **Port:** 4000
 
 ### Multer File Handler
 - **Purpose:** Parses multipart/form-data for PDF uploads
 - **Technology:** multer npm package
-- **Location:** `server/src/routes/upload.js`
+- **Location:** `server/src/index.js` (upload endpoint)
 - **Dependencies:** Express middleware
 
 ### Snowflake Client SDK

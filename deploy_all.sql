@@ -114,7 +114,7 @@ BEGIN
         SUBSTR(RELATIVE_PATH, REGEXP_INSTR(RELATIVE_PATH, '[^/]+$')) AS FILE_NAME,
         SIZE,
         CAST(LAST_MODIFIED AS TIMESTAMP_NTZ) AS LAST_MODIFIED,
-        SNOWFLAKE.CORTEX.PARSE_DOCUMENT(
+        AI_PARSE_DOCUMENT(
           '@SFE_DOCUMENTS_STAGE',
           RELATIVE_PATH,
           {'mode': 'LAYOUT'}
@@ -213,7 +213,7 @@ BEGIN
   END IF;
   
   answer := (
-    SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large2',
+    SELECT AI_COMPLETE('mistral-large2',
       'You are an expert analyst. Answer the following question based on the provided document excerpts.
 
 QUESTION: ' || :question || '
@@ -248,7 +248,7 @@ BEGIN
     RETURN '{"error": "Document not found or not yet processed."}';
   END IF;
   
-  translated_text := (SELECT SNOWFLAKE.CORTEX.TRANSLATE(:doc_text, '', :target_language));
+  translated_text := (SELECT AI_TRANSLATE(:doc_text, '', :target_language));
   
   RETURN translated_text;
 END;

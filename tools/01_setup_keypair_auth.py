@@ -283,6 +283,9 @@ def update_nodejs_client():
     """Update snowflakeClient.js to support both password and key-pair auth."""
     client_path = Path("server/src/snowflakeClient.js")
     
+    # Ensure directory exists
+    client_path.parent.mkdir(parents=True, exist_ok=True)
+    
     new_content = """import fs from 'fs';
 import path from 'path';
 import snowflake from 'snowflake-sdk';

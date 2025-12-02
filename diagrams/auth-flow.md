@@ -136,7 +136,7 @@ sequenceDiagram
 ### Express Server
 - **Purpose:** Backend application making Snowflake calls
 - **Technology:** Node.js, Express
-- **Location:** `server/src/`
+- **Location:** `server/src/index.js`
 - **Dependencies:** Snowflake credentials, network access
 - **Authentication:** Inherits from .env configuration
 - **Port:** 4000
